@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ToolActionsGroup, type ToolAction } from "../tool-actions-group";
+import {
+  splitThinkingContent,
+  ToolActionsGroup,
+  type ToolAction,
+} from "../tool-actions-group";
 
 const source = readFileSync(new URL("../tool-actions-group.tsx", import.meta.url), "utf8");
 
@@ -39,6 +43,37 @@ describe("工具过程折叠组", () => {
 
     expect(html).toContain("运行失败");
     expect(html).not.toContain("已处理 1 项");
+  });
+
+  it("仅有结构化标题时不再生成重复正文", () => {
+    const title = "Planning copy, build, and start with updated ports";
+    expect(splitThinkingContent(`**${title}**`, true)).toEqual({
+      summary: title,
+      body: "",
+    });
+
+    const html = renderToStaticMarkup(createElement(ToolActionsGroup, {
+      tools: [],
+      thinkingContent: `**${title}**`,
+      isStreaming: true,
+      defaultExpanded: true,
+    }));
+    expect(html.split(title)).toHaveLength(2);
+    expect(html).toContain("disabled=\"\"");
+  });
+
+  it("结构化标题和正文分开显示", () => {
+    expect(splitThinkingContent("**检查构建配置**\n\n接下来核对端口设置。", true)).toEqual({
+      summary: "检查构建配置",
+      body: "接下来核对端口设置。",
+    });
+  });
+
+  it("普通思考内容完整保留为正文", () => {
+    expect(splitThinkingContent("先检查配置，再运行构建。", false)).toEqual({
+      summary: "思考过程",
+      body: "先检查配置，再运行构建。",
+    });
   });
 });
 

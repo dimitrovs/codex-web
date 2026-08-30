@@ -443,34 +443,51 @@ function StatusBullet({ status }: { status: ToolStatus }) {
 // Thinking row — same style as tool rows, Brain icon → caret on hover
 // ---------------------------------------------------------------------------
 
+export function splitThinkingContent(content: string, isStreaming = false): { summary: string; body: string } {
+  const trimmed = content.trim();
+  const structuredTitle = trimmed.match(/^\*\*([^\r\n]+?)\*\*(?:[ \t]*(?:\r?\n)+([\s\S]*))?$/)
+    ?? trimmed.match(/^#{1,4}\s+([^\r\n]+?)(?:[ \t]*(?:\r?\n)+([\s\S]*))?$/);
+
+  if (structuredTitle) {
+    return {
+      summary: structuredTitle[1].trim(),
+      body: (structuredTitle[2] ?? '').trim(),
+    };
+  }
+
+  return {
+    summary: isStreaming ? '正在思考...' : '思考过程',
+    body: trimmed,
+  };
+}
+
 function ThinkingRow({ content, isStreaming }: { content: string; isStreaming?: boolean }) {
   // Default open during streaming, collapsed in history
-  const [expanded, setExpanded] = useState(!!isStreaming);
+  const { summary, body } = splitThinkingContent(content, isStreaming);
+  const hasDetails = body.length > 0;
+  const [expanded, setExpanded] = useState(!!isStreaming && hasDetails);
   const [hovered, setHovered] = useState(false);
-  const plugins = useStreamdownPlugins(content);
-
-  // Extract summary from first **bold** or # heading
-  const summary = (() => {
-    const boldMatch = content.match(/\*\*(.+?)\*\*/);
-    if (boldMatch) return boldMatch[1];
-    const headingMatch = content.match(/^#{1,4}\s+(.+)$/m);
-    if (headingMatch) return headingMatch[1];
-    return isStreaming ? '正在思考...' : '思考过程';
-  })();
+  const plugins = useStreamdownPlugins(body);
 
   return (
     <div>
       <button
         type="button"
+        disabled={!hasDetails}
+        aria-expanded={hasDetails ? expanded : undefined}
         onClick={() => {
+          if (!hasDetails) return;
           const willExpand = !expanded;
           setExpanded(willExpand);
         }}
-        onMouseEnter={() => setHovered(true)}
+        onMouseEnter={() => hasDetails && setHovered(true)}
         onMouseLeave={() => setHovered(false)}
-        className="flex items-center gap-2 px-2 py-1 min-h-[28px] text-xs hover:bg-muted/30 rounded-sm transition-colors w-full"
+        className={cn(
+          "flex min-h-[28px] w-full items-center gap-2 rounded-sm px-2 py-1 text-xs transition-colors",
+          hasDetails ? "hover:bg-muted/30" : "cursor-default",
+        )}
       >
-        {hovered ? (
+        {hovered && hasDetails ? (
           <CaretRight
             size={14}
             className={cn(
@@ -486,7 +503,7 @@ function ThinkingRow({ content, isStreaming }: { content: string; isStreaming?: 
         </span>
       </button>
       <AnimatePresence initial={false}>
-        {expanded && (
+        {expanded && hasDetails && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
@@ -495,7 +512,7 @@ function ThinkingRow({ content, isStreaming }: { content: string; isStreaming?: 
             style={{ overflow: 'hidden' }}
           >
             <div className="ml-6 px-2 py-1.5 text-xs text-muted-foreground/70 border-l-2 border-border/30 prose prose-sm dark:prose-invert max-w-none">
-              <Streamdown plugins={plugins}>{content}</Streamdown>
+              <Streamdown plugins={plugins}>{body}</Streamdown>
             </div>
           </motion.div>
         )}
