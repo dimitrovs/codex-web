@@ -21,6 +21,9 @@ import { GlobalSearchDialog } from './GlobalSearchDialog';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
 import { useCompactViewport } from '@/hooks/useCompactViewport';
 import { useAppServerSelector } from '@/codex-web/AppServerProvider';
+import { useAppServerActions } from '@/codex-web/AppServerProvider';
+import { appServerConnectionNotice } from '@/codex-web/connection-notice';
+import { ErrorBanner } from '@/components/ui/error-banner';
 
 // AppShell 静态导入约束（Phase A 内存优化，2026-05-08）：以下三个组件
 // 仅在对应路由、状态或弹窗触发时渲染。使用 next/dynamic + ssr:false 可避免
@@ -206,6 +209,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const activeTurnsByThreadId = useAppServerSelector((state) => state.activeTurnsByThreadId);
   const pendingApprovals = useAppServerSelector((state) => state.pendingApprovals);
+  const connectionData = useAppServerSelector((state) => state.connection.data);
+  const { reconnect } = useAppServerActions();
 
   const [chatListOpenRaw, setChatListOpenRaw] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -281,6 +286,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   // Panel state — chatListOpen is no longer gated by route (sidebar always visible)
   const isChatRoute = pathname.startsWith("/chat/") || pathname === "/chat";
+  const connectionNotice = appServerConnectionNotice(connectionData, reconnect);
   const chatListOpen = chatListOpenRaw;
 
   const setChatListOpen = useCallback((open: boolean) => {
@@ -613,6 +619,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               globals.css can inset the whole window the same way. */}
           <div className="flex flex-col h-screen overflow-hidden" data-app-shell>
             <UnifiedTopBar />
+            {connectionNotice && (!isChatRoute || isSplitActive) && (
+              <ErrorBanner
+                message={connectionNotice.message}
+                description={connectionNotice.description}
+                actions={connectionNotice.actions}
+                className="mx-3 mb-2"
+              />
+            )}
             <div className="flex flex-1 min-h-0 overflow-hidden" data-app-content-row>
               {/* Phase 7c closeout — the left sidebar is now a
                   row-level card, exactly like main / workspace /

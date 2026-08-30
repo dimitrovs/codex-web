@@ -142,4 +142,14 @@ describe("AppServerBrowserClient connection close", () => {
 
     expect(listener).not.toHaveBeenCalled();
   });
+
+  it("主动关闭连接中的 socket 会拒绝 connect", async () => {
+    globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+    const client = new AppServerBrowserClient("ws://127.0.0.1/bridge");
+
+    const connecting = client.connect();
+    client.close();
+
+    await expect(connecting).rejects.toThrow("Web bridge 连接已关闭");
+  });
 });

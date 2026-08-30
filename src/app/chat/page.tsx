@@ -49,6 +49,7 @@ import {
   type CodexWebToolUseInfo,
 } from '@/codex-web/tool-adapter';
 import { mergeCrossClientUserMessages } from '@/codex-web/cross-client-sync';
+import { appServerConnectionNotice } from '@/codex-web/connection-notice';
 
 const DEFAULT_CODEX_PROVIDER_ID = 'codex_account';
 const DEFAULT_CODEX_MODEL = 'gpt-5.5';
@@ -133,6 +134,7 @@ function NewChatPageInner() {
     updateThreadPermissions,
     updateThreadModelSettings,
     publishCrossClientUserMessage,
+    reconnect,
   } = useAppServerActions();
   const { t } = useTranslation();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -168,6 +170,7 @@ function NewChatPageInner() {
   const [mode, setMode] = useState('code');
   // Codex-only 新建聊天：先用稳定默认值占位，再用 app-server model/list 校正。
   const [modelReady, setModelReady] = useState(false);
+  const connectionNotice = appServerConnectionNotice(connectionData, reconnect);
   const [currentModel, setCurrentModel] = useState(DEFAULT_CODEX_MODEL);
   const [currentProviderId, setCurrentProviderId] = useState(DEFAULT_CODEX_PROVIDER_ID);
   const [pendingPermission, setPendingPermission] = useState<PermissionRequestEvent | null>(null);
@@ -747,6 +750,7 @@ function NewChatPageInner() {
       // PromptInput clear a first-message screenshot that never got sent (#615).
       if (isStreaming) return false;
       if (appServerApproval) return false;
+      if (connectionData !== 'connected') return false;
 
       // Wait for model/provider to be resolved from the global default before allowing send
       if (!modelReady) return false;
@@ -916,7 +920,7 @@ function NewChatPageInner() {
         }
       }
     },
-    [isStreaming, appServerApproval, workingDir, currentModel, currentProviderId, selectedEffort, mode, permissionProfile, setPendingApprovalSessionId, t, canSendWithCurrentProvider, modelReady, noCompatibleProvider, createdSessionId, sendOneTurn, sendTurnInThread, publishCrossClientUserMessage, router]
+    [isStreaming, appServerApproval, connectionData, workingDir, currentModel, currentProviderId, selectedEffort, mode, permissionProfile, setPendingApprovalSessionId, t, canSendWithCurrentProvider, modelReady, noCompatibleProvider, createdSessionId, sendOneTurn, sendTurnInThread, publishCrossClientUserMessage, router]
   );
 
   const appServerGoal = createdSessionId ? goalsByThreadId[createdSessionId] ?? null : null;
@@ -1093,6 +1097,15 @@ function NewChatPageInner() {
   // ChatComposerActionBar across two branches.
   const composerStack = (
     <>
+      {connectionNotice && (
+        <ErrorBanner
+          key="connection-banner"
+          message={connectionNotice.message}
+          description={connectionNotice.description}
+          actions={connectionNotice.actions}
+          className="mx-4 mb-2"
+        />
+      )}
       {/* Stable keys preserve composer state when transient sibling rows change. */}
       {errorBanner && (
         <ErrorBanner
@@ -1110,7 +1123,7 @@ function NewChatPageInner() {
         <PlanImplementationPromptBar
           key="composer-plan-implementation"
           prompt={planImplementationPrompt}
-          disabled={isStreaming}
+          disabled={connectionData !== 'connected' || isStreaming}
           onImplement={(message) => {
             if (appServerFinalTurnKey) setDismissedPlanPromptKey(appServerFinalTurnKey);
             setMode('code');
@@ -1133,7 +1146,7 @@ function NewChatPageInner() {
           sourceBreadcrumb={appServerGoal.source}
           turnStatus={appServerTurn?.status}
           turnStartedAtMs={streamingStartedAtRef.current}
-          pending={goalMutationPending}
+          pending={goalMutationPending || connectionData !== 'connected'}
           onStatusChange={handleGoalStatusChange}
           onEdit={handleGoalEdit}
           onClear={handleGoalClear}
@@ -1168,7 +1181,7 @@ function NewChatPageInner() {
         onSend={sendFirstMessage}
         onCommand={handleCommand}
         onStop={stopStreaming}
-        disabled={!modelReady || noCompatibleProvider || !!appServerApproval}
+        disabled={connectionData !== 'connected' || !modelReady || noCompatibleProvider || !!appServerApproval}
         isStreaming={isStreaming}
         modelName={currentModel}
         onModelChange={setCurrentModel}
@@ -1249,7 +1262,7 @@ function NewChatPageInner() {
       <GoalEditDialog
         open={goalEditOpen}
         objective={appServerGoal?.data.objective ?? ''}
-        pending={goalMutationPending}
+        pending={goalMutationPending || connectionData !== 'connected'}
         onOpenChange={setGoalEditOpen}
         onSave={handleGoalSave}
       />

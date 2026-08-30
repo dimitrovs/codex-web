@@ -25,6 +25,7 @@ export function SplitColumn({ sessionId, isActive, onClose, onFocus }: SplitColu
   const [messages, setMessages] = useState<Message[]>([]);
   const [thread, setThread] = useState<Thread | null>(null);
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sessionTitle, setSessionTitle] = useState('');
   const [projectName, setProjectName] = useState('');
@@ -53,16 +54,11 @@ export function SplitColumn({ sessionId, isActive, onClose, onFocus }: SplitColu
   } = useAppServerActions();
 
   useEffect(() => {
-    if (connectionData !== 'connected') {
-      if (connectionData === 'failed') {
-        setError('Codex app-server connection failed');
-        setLoading(false);
-      }
-      return;
-    }
+    if (connectionData !== 'connected') return;
 
     let cancelled = false;
-    setLoading(true);
+    setLoading(thread === null);
+    setSyncing(true);
     setError(null);
     void readThread(sessionId, { includeTurns: true })
       .then(async (response) => {
@@ -90,7 +86,10 @@ export function SplitColumn({ sessionId, isActive, onClose, onFocus }: SplitColu
         if (!cancelled) setError(loadError instanceof Error ? loadError.message : String(loadError));
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+          setSyncing(false);
+        }
       });
 
     return () => { cancelled = true; };
@@ -156,22 +155,24 @@ export function SplitColumn({ sessionId, isActive, onClose, onFocus }: SplitColu
           appServerRequest={pendingRequest}
           appServerGoal={goal}
           appServerTokenUsage={tokenUsage}
+          composerDisabled={connectionData !== 'connected' || syncing}
           onAppServerRequestResponse={(input) => respondToServerRequest(input, pendingRequest?.requestId)}
-          onAppServerPermissionChange={async (next) => {
+          onAppServerPermissionChange={connectionData === 'connected' ? async (next) => {
             await updateThreadPermissions({ threadId: sessionId, cwd: workingDirectory, permissionProfile: next });
             setPermissionProfile(next);
-          }}
-          onAppServerModelChange={async (next) => {
+          } : undefined}
+          onAppServerModelChange={connectionData === 'connected' ? async (next) => {
             await updateThreadModelSettings({ threadId: sessionId, model: next });
             setModel(next);
-          }}
-          onAppServerEffortChange={async (next) => {
+          } : undefined}
+          onAppServerEffortChange={connectionData === 'connected' ? async (next) => {
             await updateThreadModelSettings({ threadId: sessionId, effort: next });
             setEffort(next);
-          }}
-          appServerInterrupt={activeTurn ? () => interruptTurn({ threadId: sessionId, turnId: activeTurn.turnId }) : undefined}
-          appServerSend={({ content, files, cwd, model: nextModel, effort: nextEffort, mode: nextMode, permissionProfile: nextPermission, onAccepted }) =>
-            sendTurnInThread({
+          } : undefined}
+          appServerInterrupt={connectionData === 'connected' && activeTurn ? () => interruptTurn({ threadId: sessionId, turnId: activeTurn.turnId }) : undefined}
+          appServerSend={({ content, files, cwd, model: nextModel, effort: nextEffort, mode: nextMode, permissionProfile: nextPermission, onAccepted }) => {
+            if (connectionData !== 'connected') throw new Error('Codex app-server 尚未连接');
+            return sendTurnInThread({
               threadId: sessionId,
               content,
               files,
@@ -181,8 +182,8 @@ export function SplitColumn({ sessionId, isActive, onClose, onFocus }: SplitColu
               mode: nextMode,
               permissionProfile: nextPermission,
               onAccepted,
-            })
-          }
+            });
+          }}
         />
       </div>
     </div>

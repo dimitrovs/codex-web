@@ -17,6 +17,7 @@ export async function resolveCodexBridgeUrl(
   publicBridgeUrl: string,
   fetcher: BridgeUrlFetch = fetch,
   location?: BridgePageLocation,
+  signal?: AbortSignal,
 ): Promise<string> {
   if (publicBridgeUrl.trim()) {
     return resolveBridgeEndpoint(publicBridgeUrl, location);
@@ -24,6 +25,7 @@ export async function resolveCodexBridgeUrl(
 
   const response = await fetcher("/api/codex/bridge-url", {
     cache: "no-store",
+    signal,
   });
   const body = (await response.json()) as BridgeRuntimeResponse;
 

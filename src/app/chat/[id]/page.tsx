@@ -7,6 +7,7 @@ import type { Message, ChatSession, PermissionProfile } from '@/types';
 import { ChatView } from '@/components/chat/ChatView';
 import { MessageList } from '@/components/chat/MessageList';
 import { SpinnerGap } from "@/components/ui/icon";
+import { ErrorBanner } from '@/components/ui/error-banner';
 import { usePanel } from '@/hooks/usePanel';
 import { useWorkspaceSidebarOptional } from '@/hooks/useWorkspaceSidebar';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -48,6 +49,7 @@ import {
   writeThreadRuntimePreference,
 } from '@/codex-web/thread-runtime-preferences';
 import { latestInProgressTurnId } from '@/codex-web/resumed-turn-hydration';
+import { appServerConnectionNotice } from '@/codex-web/connection-notice';
 import { readDefaultPanelPreference } from '@/lib/app-preferences';
 import { threadRollbackToMessages } from '@/codex-web/thread-rollback';
 import {
@@ -149,6 +151,7 @@ export default function ChatSessionPage({ params }: ChatSessionPageProps) {
     return threadIds.flatMap((threadId) => crossClientUserMessagesByThreadId[threadId] ?? []);
   }, [crossClientUserMessagesByThreadId, id, resumedThreadId]);
   const loadingHandoffMessages = appServerSyncedUserMessages.map(({ message }) => message);
+  const connectionNotice = appServerConnectionNotice(connectionData, reconnect);
 
   useEffect(() => {
     turnSnapshotsRef.current = turnSnapshots;
@@ -525,6 +528,18 @@ export default function ChatSessionPage({ params }: ChatSessionPageProps) {
   }
 
   if (error) {
+    if (connectionNotice) {
+      return (
+        <div className="flex h-full items-center justify-center px-4">
+          <ErrorBanner
+            message={connectionNotice.message}
+            description={connectionNotice.description}
+            actions={connectionNotice.actions}
+            className="w-full max-w-md"
+          />
+        </div>
+      );
+    }
     return (
       <div className="flex h-full items-center justify-center">
         <div className="text-center space-y-2">
@@ -551,18 +566,12 @@ export default function ChatSessionPage({ params }: ChatSessionPageProps) {
     latestHistoryTurn,
   });
   const appServerTurn = activeTurnVisibility.visibleTurn;
-  const connectionNotice = connectionData === 'failed'
-    ? {
-        message: '与 Codex app-server 的连接失败。',
-        description: '请检查网络或服务状态后重试。',
-        actions: [{ label: '重新连接', onClick: reconnect }],
-      }
-    : connectionData === 'reconnecting'
-      ? { message: '与 Codex app-server 的连接已断开，正在重新连接...' }
-    : connectionData === 'connecting' && messages.length > 0
+  const appServerNotice = connectionNotice
+    ?? (connectionData === 'connecting' && messages.length > 0
       ? { message: '正在连接 Codex app-server...' }
-      : null;
-  const appServerNotice = connectionNotice ?? activeTurnVisibility.notice ?? paginationNotice;
+      : null)
+    ?? activeTurnVisibility.notice
+    ?? paginationNotice;
   const appServerRequest = isAppServerThread
     ? firstApproval(pendingApprovals, (approval) =>
         approvalRequestMatchesThread(approval, [id, resumedThreadId]),

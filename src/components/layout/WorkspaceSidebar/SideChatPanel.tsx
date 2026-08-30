@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 
 import { ChatView } from '@/components/chat/ChatView';
 import { Button } from '@/components/ui/button';
+import { ErrorBanner } from '@/components/ui/error-banner';
 import { ChatCircle, Plus, SpinnerGap } from '@/components/ui/icon';
 import { firstApproval, approvalRequestMatchesThread } from '@/codex-web/approval-queue-adapter';
 import { useAppServerActions, useAppServerSelector } from '@/codex-web/AppServerProvider';
@@ -12,6 +13,7 @@ import { usePanel } from '@/hooks/usePanel';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useWorkspaceSidebar } from '@/hooks/useWorkspaceSidebar';
 import type { TranslationKey } from '@/i18n';
+import { appServerConnectionNotice } from '@/codex-web/connection-notice';
 
 export function SideChatPanel({ sideChatId, isActive = true }: { sideChatId: string; isActive?: boolean }) {
   const { sessionId: parentThreadId, workingDirectory } = usePanel();
@@ -39,7 +41,9 @@ export function SideChatPanel({ sideChatId, isActive = true }: { sideChatId: str
     respondToServerRequest,
     updateThreadPermissions,
     updateThreadModelSettings,
+    reconnect,
   } = useAppServerActions();
+  const connectionNotice = appServerConnectionNotice(connection, reconnect);
 
   const defaultModel = useMemo(() =>
     models?.data.data.find((model) => !model.hidden && model.isDefault)?.id
@@ -54,7 +58,20 @@ export function SideChatPanel({ sideChatId, isActive = true }: { sideChatId: str
     ? firstApproval(pendingApprovals, (approval) => approvalRequestMatchesThread(approval, [childThreadId]))
     : null;
 
-  if (sideChat?.status === 'creating' || (!sideChat && connection !== 'failed')) {
+  if (!childThreadId && connectionNotice) {
+    return (
+      <div className="flex h-full w-full items-center justify-center px-4">
+        <ErrorBanner
+          message={connectionNotice.message}
+          description={connectionNotice.description}
+          actions={connectionNotice.actions}
+          className="w-full max-w-sm"
+        />
+      </div>
+    );
+  }
+
+  if (sideChat?.status === 'creating' || !sideChat) {
     return (
       <div className="flex h-full w-full items-center justify-center" role="status">
         <SpinnerGap className="animate-spin text-muted-foreground" size={22} />
@@ -105,22 +122,29 @@ export function SideChatPanel({ sideChatId, isActive = true }: { sideChatId: str
         appServerTurn={activeTurn}
         appServerRequest={pendingRequest}
         appServerTokenUsage={tokenUsage}
+        appServerNotice={connectionNotice}
+        composerDisabled={connection !== 'connected'}
         emptyState={<SideChatEmptyState />}
         onAppServerRequestResponse={(input) => respondToServerRequest(input, pendingRequest?.requestId)}
-        onAppServerPermissionChange={async (next) => {
+        onAppServerPermissionChange={connection === 'connected' ? async (next) => {
           await updateThreadPermissions({
             threadId: childThreadId,
             cwd: workingDirectory,
             permissionProfile: next,
           });
-        }}
-        onAppServerModelChange={(next) => updateThreadModelSettings({ threadId: childThreadId, model: next }).then(() => undefined)}
-        onAppServerEffortChange={(next) => updateThreadModelSettings({ threadId: childThreadId, effort: next }).then(() => undefined)}
-        appServerInterrupt={activeTurn
+        } : undefined}
+        onAppServerModelChange={connection === 'connected'
+          ? (next) => updateThreadModelSettings({ threadId: childThreadId, model: next }).then(() => undefined)
+          : undefined}
+        onAppServerEffortChange={connection === 'connected'
+          ? (next) => updateThreadModelSettings({ threadId: childThreadId, effort: next }).then(() => undefined)
+          : undefined}
+        appServerInterrupt={connection === 'connected' && activeTurn
           ? () => interruptTurn({ threadId: childThreadId, turnId: activeTurn.turnId })
           : undefined}
-        appServerSend={({ content, files, cwd, model: nextModel, effort, mode, permissionProfile: nextPermission, skills, onAccepted }) =>
-          sendTurnInThread({
+        appServerSend={({ content, files, cwd, model: nextModel, effort, mode, permissionProfile: nextPermission, skills, onAccepted }) => {
+          if (connection !== 'connected') throw new Error('Codex app-server 尚未连接');
+          return sendTurnInThread({
             threadId: childThreadId,
             content,
             files,
@@ -131,8 +155,8 @@ export function SideChatPanel({ sideChatId, isActive = true }: { sideChatId: str
             permissionProfile: nextPermission,
             skills,
             onAccepted,
-          })
-        }
+          });
+        }}
       />
     </div>
   );

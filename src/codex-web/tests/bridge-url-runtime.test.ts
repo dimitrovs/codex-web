@@ -34,6 +34,25 @@ describe("bridge url runtime resolver", () => {
     expect(calls).toEqual(["/api/codex/bridge-url:no-store"]);
   });
 
+  it("把取消信号传给 runtime API 请求", async () => {
+    const controller = new AbortController();
+    const fetcher: BridgeUrlFetch = async (_input, init) => {
+      expect(init?.signal).toBe(controller.signal);
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ bridgeUrl: "/codex-bridge?token=test" }),
+      };
+    };
+
+    await resolveCodexBridgeUrl(
+      "",
+      fetcher,
+      { protocol: "http:", host: "localhost:3000" },
+      controller.signal,
+    );
+  });
+
   it("把同源 bridge path 转成当前 HTTP 页面的 WebSocket URL", async () => {
     const location = { protocol: "http:", host: "localhost:4567" };
     expect(resolveBridgeEndpoint("/codex-bridge?token=x", location)).toBe(

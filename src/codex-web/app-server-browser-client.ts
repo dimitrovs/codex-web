@@ -38,6 +38,7 @@ export class AppServerBrowserClient {
     await new Promise<void>((resolve, reject) => {
       socket.addEventListener("open", () => resolve(), { once: true });
       socket.addEventListener("error", () => reject(new Error("Web bridge 连接失败")), { once: true });
+      socket.addEventListener("close", () => reject(new Error("Web bridge 连接已关闭")), { once: true });
     });
   }
 

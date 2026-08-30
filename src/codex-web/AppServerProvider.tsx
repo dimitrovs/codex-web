@@ -306,11 +306,14 @@ export function AppServerProvider({ children }: { children: React.ReactNode }) {
     let reconnectAttempt = 0;
     let reconnectStartedAt: number | null = null;
     let reconnectTimer: number | null = null;
+    let reconnectDeadlineTimer: number | null = null;
+    let reconnectStopped = false;
     let bootstrapping = false;
+    let bootstrapAbortController: AbortController | null = null;
     const client = new AppServerBrowserClient();
     clientRef.current = client;
     client.onClose((error) => {
-      if (disposed) return;
+      if (disposed || reconnectStopped) return;
       const message = error.message;
       setState((current) => ({
         ...current,
@@ -550,18 +553,45 @@ export function AppServerProvider({ children }: { children: React.ReactNode }) {
       });
     });
 
+    function clearReconnectDeadline() {
+      if (reconnectDeadlineTimer !== null) {
+        window.clearTimeout(reconnectDeadlineTimer);
+        reconnectDeadlineTimer = null;
+      }
+    }
+
+    function failReconnect() {
+      if (disposed || reconnectStopped) return;
+      reconnectStopped = true;
+      if (reconnectTimer !== null) {
+        window.clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+      clearReconnectDeadline();
+      bootstrapAbortController?.abort();
+      client.close();
+      setState((current) => ({
+        ...current,
+        connection: { source: "web-bridge", data: "failed" },
+      }));
+    }
+
+    function armReconnectDeadline() {
+      if (disposed || reconnectStopped || reconnectDeadlineTimer !== null) return;
+      reconnectStartedAt ??= Date.now();
+      reconnectDeadlineTimer = window.setTimeout(failReconnect, RECONNECT_FAILURE_AFTER_MS);
+    }
+
     function scheduleReconnect() {
-      if (disposed || reconnectTimer !== null) {
+      if (disposed || reconnectStopped || reconnectTimer !== null) {
         return;
       }
       reconnectStartedAt ??= Date.now();
       if (Date.now() - reconnectStartedAt >= RECONNECT_FAILURE_AFTER_MS) {
-        setState((current) => ({
-          ...current,
-          connection: { source: "web-bridge", data: "failed" },
-        }));
+        failReconnect();
         return;
       }
+      armReconnectDeadline();
       const delay = reconnectDelayMs(reconnectAttempt);
       reconnectAttempt += 1;
       reconnectTimer = window.setTimeout(() => {
@@ -576,6 +606,8 @@ export function AppServerProvider({ children }: { children: React.ReactNode }) {
         window.clearTimeout(reconnectTimer);
         reconnectTimer = null;
       }
+      clearReconnectDeadline();
+      bootstrapAbortController?.abort();
       clientRef.current = null;
       client.close();
     };
@@ -583,10 +615,13 @@ export function AppServerProvider({ children }: { children: React.ReactNode }) {
       if (disposed) return;
       reconnectAttempt = 0;
       reconnectStartedAt = Date.now();
+      reconnectStopped = false;
       if (reconnectTimer !== null) {
         window.clearTimeout(reconnectTimer);
         reconnectTimer = null;
       }
+      clearReconnectDeadline();
+      armReconnectDeadline();
       void bootstrap(true);
     };
     const persistResumableTurns = () => {
@@ -607,13 +642,22 @@ export function AppServerProvider({ children }: { children: React.ReactNode }) {
       if (disposed || bootstrapping) {
         return;
       }
+      reconnectStopped = false;
+      armReconnectDeadline();
       bootstrapping = true;
+      const abortController = new AbortController();
+      bootstrapAbortController = abortController;
       setState((current) => ({
         ...current,
         connection: { source: "web-bridge", data: isReconnect ? "reconnecting" : "connecting" },
       }));
       try {
-        const latestBridgeUrl = await resolveCodexBridgeUrl(publicBridgeUrl);
+        const latestBridgeUrl = await resolveCodexBridgeUrl(
+          publicBridgeUrl,
+          fetch,
+          undefined,
+          abortController.signal,
+        );
         await client.connect(latestBridgeUrl);
         const initialize = (await client.request("initialize", {
           clientInfo: { name: "codex_web", title: "Codex Web", version: APP_VERSION },
@@ -633,6 +677,8 @@ export function AppServerProvider({ children }: { children: React.ReactNode }) {
 
         reconnectAttempt = 0;
         reconnectStartedAt = null;
+        reconnectStopped = false;
+        clearReconnectDeadline();
         setState((current) => ({
           ...current,
           connection: { source: "web-bridge", data: "connected" },
@@ -646,12 +692,14 @@ export function AppServerProvider({ children }: { children: React.ReactNode }) {
         if (disposed) {
           return;
         }
+        if (reconnectStopped) return;
         if (error instanceof BridgeAuthenticationError) {
           disposed = true;
           if (reconnectTimer !== null) {
             window.clearTimeout(reconnectTimer);
             reconnectTimer = null;
           }
+          clearReconnectDeadline();
           clientRef.current = null;
           client.close();
           const next = `${window.location.pathname}${window.location.search}${window.location.hash}`;
@@ -668,6 +716,7 @@ export function AppServerProvider({ children }: { children: React.ReactNode }) {
         }));
         scheduleReconnect();
       } finally {
+        if (bootstrapAbortController === abortController) bootstrapAbortController = null;
         bootstrapping = false;
       }
     }
@@ -683,6 +732,8 @@ export function AppServerProvider({ children }: { children: React.ReactNode }) {
       if (reconnectTimer !== null) {
         window.clearTimeout(reconnectTimer);
       }
+      clearReconnectDeadline();
+      bootstrapAbortController?.abort();
       clientRef.current = null;
       approvalResponseStateRef.current = {};
       processListenersRef.current.clear();

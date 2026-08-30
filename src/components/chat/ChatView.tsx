@@ -97,6 +97,7 @@ import {
   type CrossClientThreadRollback,
   type CrossClientUserMessage,
 } from '@/codex-web/cross-client-sync';
+import type { AppServerConnectionNotice } from '@/codex-web/connection-notice';
 
 interface QueuedMessage {
   content: string;
@@ -139,11 +140,7 @@ interface ChatViewProps {
   appServerThreadId?: string | null;
   appServerTokenUsage?: ThreadTokenUsage | null;
   appServerGoal?: { source: string; data: ThreadGoal } | null;
-  appServerNotice?: {
-    message: string;
-    description?: string;
-    actions?: Array<{ label: string; onClick: () => void; variant?: 'default' | 'outline' | 'ghost' }>;
-  } | null;
+  appServerNotice?: AppServerConnectionNotice | null;
   onAppServerRequestResponse?: (input: AppServerRequestResponseInput) => Promise<void>;
   onAppServerPermissionChange?: (permissionProfile: PermissionProfile) => Promise<void>;
   onAppServerModelChange?: (model: string) => Promise<void>;
@@ -1229,7 +1226,7 @@ export function ChatView({
   /** Start an API stream for the given content. Does NOT add a user message to the list. */
   const doStartStream = useCallback(
     (content: string, files?: FileAttachment[], systemPromptAppend?: string, displayOverride?: string, mentions?: MentionRef[], selectedSkills?: readonly SkillInputReference[], sessionIdOverride?: string) => {
-      if (readOnly) return;
+      if (composerDisabled || readOnly) return;
       // Guard 1: idle = picker feed hasn't loaded yet. We don't know
       // what the runtime gate would have done with the saved pair, so
       // we can't safely fire — letting it through with raw values
@@ -1307,12 +1304,12 @@ export function ChatView({
         },
       });
     },
-    [readOnly, activeSessionId, mode, currentModel, currentProviderId, selectedEffort, context1m, buildThinkingConfig, handleModeChange, noCompatibleProvider, providerFetchState, resolvedProviderId, resolvedModel, sessionProviderRuntimeIncompatible]
+    [composerDisabled, readOnly, activeSessionId, mode, currentModel, currentProviderId, selectedEffort, context1m, buildThinkingConfig, handleModeChange, noCompatibleProvider, providerFetchState, resolvedProviderId, resolvedModel, sessionProviderRuntimeIncompatible]
   );
 
   const sendMessage = useCallback(
     async (content: string, files?: FileAttachment[], systemPromptAppend?: string, displayOverride?: string, mentions?: MentionRef[], selectedSkills?: readonly SkillInputReference[], modeOverride?: string) => {
-      if (readOnly) return false;
+      if (composerDisabled || readOnly) return false;
       if (appServerSend) {
         if (appServerRequest) {
           console.warn('[ChatView] app-server request pending，发送已暂缓');
@@ -1500,7 +1497,7 @@ export function ChatView({
       cappedSetMessages((prev) => [...prev, userMessage]);
       doStartStream(content, files, systemPromptAppend, displayOverride, mentions, selectedSkills, effectiveSessionId);
     },
-    [readOnly, appServerSend, appServerRequest, activeSessionId, adoptCodexSessionId, sessionId, workingDirectory, currentModel, selectedEffort, mode, permissionProfile, router, isStreaming, doStartStream, cappedSetMessages, noCompatibleProvider, providerFetchState, sessionProviderRuntimeIncompatible, onAppServerUserMessageAccepted]
+    [composerDisabled, readOnly, appServerSend, appServerRequest, activeSessionId, adoptCodexSessionId, sessionId, workingDirectory, currentModel, selectedEffort, mode, permissionProfile, router, isStreaming, doStartStream, cappedSetMessages, noCompatibleProvider, providerFetchState, sessionProviderRuntimeIncompatible, onAppServerUserMessageAccepted]
   );
 
   sendMessageRef.current = sendMessage;
@@ -1874,7 +1871,7 @@ export function ChatView({
       <GoalEditDialog
         open={goalEditOpen}
         objective={appServerGoal?.data.objective ?? ''}
-        pending={goalMutationPending}
+        pending={goalMutationPending || composerDisabled}
         onOpenChange={setGoalEditOpen}
         onSave={handleGoalSave}
       />
@@ -1973,7 +1970,7 @@ export function ChatView({
       {planImplementationPrompt && (
         <PlanImplementationPromptBar
           prompt={planImplementationPrompt}
-          disabled={isStreaming}
+          disabled={composerDisabled || isStreaming}
           onImplement={handleImplementPlan}
           onClearContextImplement={appServerClearContextAndSend ? handleClearContextAndImplementPlan : undefined}
           onStay={() => {
@@ -1988,7 +1985,7 @@ export function ChatView({
           sourceBreadcrumb={appServerGoal.source}
           turnStatus={appServerTurn?.status}
           turnStartedAtMs={appServerPanelStartedAt}
-          pending={goalMutationPending}
+          pending={goalMutationPending || composerDisabled}
           onStatusChange={handleGoalStatusChange}
           onEdit={handleGoalEdit}
           onClear={handleGoalClear}
