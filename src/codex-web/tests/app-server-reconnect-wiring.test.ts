@@ -38,6 +38,28 @@ describe("app-server 断线重连接线", () => {
     expect(historyPage).toContain("connectionData !== 'connected'");
   });
 
+  it("连接变化时保留已加载消息，并在聊天区显示断线提示", () => {
+    expect(historyPage).toContain("const switchingSessions = routeIdRef.current !== id");
+    expect(historyPage).toContain("if (switchingSessions) {");
+    expect(historyPage).toContain("与 Codex app-server 的连接已断开，正在重新连接...");
+    expect(historyPage).toContain("const appServerNotice = connectionNotice ?? activeTurnVisibility.notice ?? paginationNotice;");
+    expect(historyPage).toContain("readOnly={activeWriterReplayOnly}");
+    expect(historyPage).toContain("composerDisabled={connectionData !== 'connected' || sessionSyncing}");
+  });
+
+  it("长时间重连失败后停止自动重试，并允许用户手动重连", () => {
+    expect(provider).toContain("Date.now() - reconnectStartedAt >= RECONNECT_FAILURE_AFTER_MS");
+    expect(provider).toContain('connection: { source: "web-bridge", data: "failed" }');
+    expect(provider).toContain('window.addEventListener("codex-web:reconnect", handleReconnect)');
+    expect(historyPage).toContain("与 Codex app-server 的连接失败。");
+    expect(historyPage).toContain("actions: [{ label: '重新连接', onClick: reconnect }]");
+    expect(historyPage).toContain("connectionData === 'failed' && !sessionLoadedRef.current");
+    expect(historyPage).toContain("const activeTurnVisibility = selectVisibleActiveTurn({");
+    expect(historyPage).toContain("appServerSend={canDisplayAppServerThread ? async");
+    expect(historyPage).toContain("if (connectionData !== 'connected') throw new Error('Codex app-server 尚未连接')");
+    expect(historyPage).toContain("setSessionSyncing(false)");
+  });
+
   it("新任务被接受后进入 Thread 路由，使刷新能够恢复运行态", () => {
     expect(newChatPage).toContain("if (!existingThreadId)");
     expect(newChatPage).toContain("router.push(`/chat/${encodeURIComponent(threadId)}`)");

@@ -78,6 +78,7 @@ export default function ChatSessionPage({ params }: ChatSessionPageProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [sessionSyncing, setSessionSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sessionModel, setSessionModel] = useState<string>('');
   const [sessionEffort, setSessionEffort] = useState<ReasoningEffort | null>(null);
@@ -91,7 +92,6 @@ export default function ChatSessionPage({ params }: ChatSessionPageProps) {
   const [sessionPermissionProfile, setSessionPermissionProfile] = useState<PermissionProfile>('request_approval');
   const [sessionMode, setSessionMode] = useState<'code' | 'plan'>('code');
   const [sessionHasSummary, setSessionHasSummary] = useState(false);
-  const [sessionReadOnly, setSessionReadOnly] = useState(false);
   const [activeWriterReplayOnly, setActiveWriterReplayOnly] = useState(false);
   const [sessionWorkingDirectory, setSessionWorkingDirectory] = useState('');
   const [sessionProjectName, setSessionProjectName] = useState('');
@@ -133,6 +133,7 @@ export default function ChatSessionPage({ params }: ChatSessionPageProps) {
     updateThreadPermissions,
     updateThreadModelSettings,
     publishCrossClientUserMessage,
+    reconnect,
   } = useAppServerActions();
   const ws = useWorkspaceSidebarOptional();
   const targetFilePath = searchParams.get('file') || undefined;
@@ -140,6 +141,8 @@ export default function ChatSessionPage({ params }: ChatSessionPageProps) {
   const compactViewport = useCompactViewport();
   const { t } = useTranslation();
   const defaultPanelAppliedRef = useRef(false);
+  const routeIdRef = useRef<string | null>(null);
+  const sessionLoadedRef = useRef(false);
   const turnSnapshotsRef = useRef(turnSnapshots);
   const appServerSyncedUserMessages = useMemo(() => {
     const threadIds = resumedThreadId && resumedThreadId !== id ? [id, resumedThreadId] : [id];
@@ -153,39 +156,46 @@ export default function ChatSessionPage({ params }: ChatSessionPageProps) {
 
   useEffect(() => {
     // Reset state when switching sessions
-    defaultPanelAppliedRef.current = false;
-    setLoading(true);
-    setError(null);
-    setMessages([]);
-    setHasMore(false);
-    setSessionModel('');
-    setSessionEffort(null);
-    setSessionProviderId('');
-    setSessionRuntimePin('');
-    setSessionReadOnly(false);
-    setActiveWriterReplayOnly(false);
-    setSessionWorkingDirectory('');
-    setSessionProjectName('');
-    setResumedThreadId(null);
-    setResumedModel('');
-    setResumedCwd('');
-    setAppServerThread(null);
-    setTurnsNextCursor(null);
-    setLatestHistoryTurn(null);
-    setPaginationNotice(null);
-    setContinuedFromMessageId(undefined);
-    setSessionInfoLoaded(false);
+    const switchingSessions = routeIdRef.current !== id;
+    routeIdRef.current = id;
+    if (switchingSessions) {
+      sessionLoadedRef.current = false;
+      setSessionSyncing(true);
+      defaultPanelAppliedRef.current = false;
+      setLoading(true);
+      setError(null);
+      setMessages([]);
+      setHasMore(false);
+      setSessionModel('');
+      setSessionEffort(null);
+      setSessionProviderId('');
+      setSessionRuntimePin('');
+      setActiveWriterReplayOnly(false);
+      setSessionWorkingDirectory('');
+      setSessionProjectName('');
+      setResumedThreadId(null);
+      setResumedModel('');
+      setResumedCwd('');
+      setAppServerThread(null);
+      setTurnsNextCursor(null);
+      setLatestHistoryTurn(null);
+      setPaginationNotice(null);
+      setContinuedFromMessageId(undefined);
+      setSessionInfoLoaded(false);
+    }
 
     let cancelled = false;
 
     if (connectionData !== 'connected') {
-      if (connectionData === 'failed') {
+      if (connectionData === 'failed' && !sessionLoadedRef.current) {
         setError('Codex app-server connection failed');
         setSessionInfoLoaded(true);
         setLoading(false);
       }
       return () => { cancelled = true; };
     }
+    setError(null);
+    setSessionSyncing(true);
 
     async function resolveContinuationBoundary(
       parentThreadId: string,
@@ -400,6 +410,8 @@ export default function ChatSessionPage({ params }: ChatSessionPageProps) {
         setError(message);
       } finally {
         if (!cancelled) {
+          sessionLoadedRef.current = true;
+          setSessionSyncing(false);
           setSessionInfoLoaded(true);
           setLoading(false);
         }
@@ -419,7 +431,6 @@ export default function ChatSessionPage({ params }: ChatSessionPageProps) {
       setSessionRuntimePin(session.runtime_pin || '');
       setSessionMode((session.mode as 'code' | 'plan') || 'code');
       setSessionHasSummary(!!session.context_summary);
-      setSessionReadOnly(!!session.read_only);
       setSessionInfoLoaded(true);
     }
 
@@ -531,18 +542,27 @@ export default function ChatSessionPage({ params }: ChatSessionPageProps) {
   const currentThreadIds = [id, resumedThreadId];
   const activeAppServerTurn = selectActiveTurnByThreadIds(activeTurnsByThreadId, currentThreadIds);
   const otherActiveTurns = selectOtherRunningActiveTurns(activeTurnsByThreadId, currentThreadIds);
-  const activeTurnVisibility = isAppServerThread
-    ? selectVisibleActiveTurn({
-        activeTurn: activeAppServerTurn,
-        otherActiveTurns,
-        routeThreadId: id,
-        resumedThreadId,
-        thread: appServerThread,
-        latestHistoryTurn,
-      })
-    : { visibleTurn: null, notice: null };
+  const activeTurnVisibility = selectVisibleActiveTurn({
+    activeTurn: activeAppServerTurn,
+    otherActiveTurns,
+    routeThreadId: id,
+    resumedThreadId,
+    thread: appServerThread,
+    latestHistoryTurn,
+  });
   const appServerTurn = activeTurnVisibility.visibleTurn;
-  const appServerNotice = activeTurnVisibility.notice ?? paginationNotice;
+  const connectionNotice = connectionData === 'failed'
+    ? {
+        message: '与 Codex app-server 的连接失败。',
+        description: '请检查网络或服务状态后重试。',
+        actions: [{ label: '重新连接', onClick: reconnect }],
+      }
+    : connectionData === 'reconnecting'
+      ? { message: '与 Codex app-server 的连接已断开，正在重新连接...' }
+    : connectionData === 'connecting' && messages.length > 0
+      ? { message: '正在连接 Codex app-server...' }
+      : null;
+  const appServerNotice = connectionNotice ?? activeTurnVisibility.notice ?? paginationNotice;
   const appServerRequest = isAppServerThread
     ? firstApproval(pendingApprovals, (approval) =>
         approvalRequestMatchesThread(approval, [id, resumedThreadId]),
@@ -566,6 +586,7 @@ export default function ChatSessionPage({ params }: ChatSessionPageProps) {
     models?.data.data.find((model) => !model.hidden)?.id ||
     '';
   const canResumeAppServerThread = isAppServerThread && !!sessionWorkingDirectory;
+  const canDisplayAppServerThread = !!sessionWorkingDirectory;
   const continuedFromHref = appServerThread?.forkedFromId
     ? continuedFromMessageId
       ? continuationParentHref(appServerThread.forkedFromId, continuedFromMessageId)
@@ -586,10 +607,11 @@ export default function ChatSessionPage({ params }: ChatSessionPageProps) {
         initialPermissionProfile={sessionPermissionProfile}
         initialMode={sessionMode}
         initialHasSummary={sessionHasSummary}
-        readOnly={activeWriterReplayOnly || (!isAppServerThread && sessionReadOnly)}
+        readOnly={activeWriterReplayOnly}
         readOnlyReason={activeWriterReplayOnly
           ? "此会话由另一个 app-server 持有；当前仅显示历史，不能提交。"
           : "这是只读历史会话，当前版本不能继续发送。"}
+        composerDisabled={connectionData !== 'connected' || sessionSyncing}
         messageApiBase={messageApiBase}
         workingDirectory={sessionWorkingDirectory}
         projectName={sessionProjectName}
@@ -692,7 +714,7 @@ export default function ChatSessionPage({ params }: ChatSessionPageProps) {
         onAppServerGoalClear={appServerGoal ? async () => {
           await clearThreadGoal(appServerGoal.data.threadId);
         } : undefined}
-        appServerInterrupt={appServerTurn ? async () => {
+        appServerInterrupt={isAppServerThread && appServerTurn ? async () => {
           await interruptTurn({
             threadId: appServerTurn.threadId || resumedThreadId || id,
             turnId: appServerTurn.turnId,
@@ -719,7 +741,8 @@ export default function ChatSessionPage({ params }: ChatSessionPageProps) {
           setTurnsNextCursor(null);
           return rolledBackMessages;
         } : undefined}
-        appServerSend={canResumeAppServerThread ? async ({ content, files, cwd, model, effort, mode, permissionProfile, onAccepted }) => {
+        appServerSend={canDisplayAppServerThread ? async ({ content, files, cwd, model, effort, mode, permissionProfile, onAccepted }) => {
+          if (connectionData !== 'connected') throw new Error('Codex app-server 尚未连接');
           const target = resolveHistoryTurnTarget({
             routeThreadId: id,
             resumedThreadId,

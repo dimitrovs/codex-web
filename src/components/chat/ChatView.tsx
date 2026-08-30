@@ -129,6 +129,7 @@ interface ChatViewProps {
   initialHasSummary?: boolean;
   readOnly?: boolean;
   readOnlyReason?: string;
+  composerDisabled?: boolean;
   adoptCodexSessionId?: string;
   messageApiBase?: string;
   workingDirectory?: string;
@@ -138,7 +139,11 @@ interface ChatViewProps {
   appServerThreadId?: string | null;
   appServerTokenUsage?: ThreadTokenUsage | null;
   appServerGoal?: { source: string; data: ThreadGoal } | null;
-  appServerNotice?: { message: string; description?: string } | null;
+  appServerNotice?: {
+    message: string;
+    description?: string;
+    actions?: Array<{ label: string; onClick: () => void; variant?: 'default' | 'outline' | 'ghost' }>;
+  } | null;
   onAppServerRequestResponse?: (input: AppServerRequestResponseInput) => Promise<void>;
   onAppServerPermissionChange?: (permissionProfile: PermissionProfile) => Promise<void>;
   onAppServerModelChange?: (model: string) => Promise<void>;
@@ -189,6 +194,7 @@ export function ChatView({
   initialHasSummary,
   readOnly = false,
   readOnlyReason,
+  composerDisabled = false,
   adoptCodexSessionId,
   messageApiBase,
   workingDirectory: sessionWorkingDirectory,
@@ -1525,6 +1531,7 @@ export function ChatView({
 
   // ── Dequeue: when streaming finishes and queue is non-empty, send next ──
   useEffect(() => {
+    if (composerDisabled) return;
     if (!isStreaming && messageQueue.length > 0 && !dequeuingRef.current) {
       if (appServerSend) {
         dequeuingRef.current = true;
@@ -1594,7 +1601,7 @@ export function ChatView({
     if (isStreaming) {
       dequeuingRef.current = false;
     }
-  }, [isStreaming, messageQueue, appServerSend, doStartStream, cappedSetMessages, activeSessionId, noCompatibleProvider, providerFetchState, sessionProviderRuntimeIncompatible]);
+  }, [isStreaming, messageQueue, appServerSend, composerDisabled, doStartStream, cappedSetMessages, activeSessionId, noCompatibleProvider, providerFetchState, sessionProviderRuntimeIncompatible]);
 
   const appendCommandMessage = useCallback((content: string) => {
     const message: Message = {
@@ -1703,7 +1710,7 @@ export function ChatView({
   // "clicked + in the assistant workspace" — both create an empty
   // session and land here.
   const isNewChat = messages.length === 0 && !isStreaming && modelSwitches.length === 0;
-  const appServerBanner = appServerErrorBanner ?? appServerNotice ?? null;
+  const appServerBanner: ChatViewProps['appServerNotice'] = appServerErrorBanner ?? appServerNotice ?? null;
 
   return (
     <PerformanceProfiler id="ChatView">
@@ -1752,6 +1759,7 @@ export function ChatView({
               <ErrorBanner
                 message={appServerBanner.message}
                 description={appServerBanner.description}
+                actions={appServerBanner.actions}
                 className="mb-2"
                 onDismiss={appServerErrorBanner ? () => setAppServerErrorBanner(null) : undefined}
               />
@@ -1773,7 +1781,8 @@ export function ChatView({
               onCommand={handleCommand}
               onStop={stopStreaming}
               disabled={
-                readOnly
+                composerDisabled
+                || readOnly
                 || !!appServerRequest
                 || (!appServerSend && (
                   noCompatibleProvider
@@ -2018,6 +2027,7 @@ export function ChatView({
         <ErrorBanner
           message={appServerBanner.message}
           description={appServerBanner.description}
+          actions={appServerBanner.actions}
           className="mx-auto mb-2 w-full max-w-3xl"
           onDismiss={appServerErrorBanner ? () => setAppServerErrorBanner(null) : undefined}
         />
@@ -2074,7 +2084,8 @@ export function ChatView({
         // runtime-filtered fallback. The matching `doStartStream`
         // guard above is belt-and-suspenders.
         disabled={
-          readOnly
+          composerDisabled
+          || readOnly
           || !!appServerRequest
           || (!appServerSend && (
             noCompatibleProvider

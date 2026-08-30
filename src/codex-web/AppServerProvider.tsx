@@ -155,7 +155,7 @@ import {
   reduceCrossClientUserMessageEvent,
   type CrossClientUserMessage,
 } from "./cross-client-sync";
-import { reconnectDelayMs } from "./reconnect-policy";
+import { RECONNECT_FAILURE_AFTER_MS, reconnectDelayMs } from "./reconnect-policy";
 import {
   shouldUpdateActiveTurnFromNotification,
   turnNotificationBase,
@@ -221,6 +221,7 @@ export type SendTurnInThreadParams = {
 };
 
 export type AppServerActions = {
+  reconnect: () => void;
   startThread: (params: StartThreadParams) => Promise<ThreadStartResponse>;
   sendOneTurn: (params: SendOneTurnParams) => Promise<AppServerTurnState>;
   resumeThread: (params: ResumeThreadParams) => Promise<ThreadResumeResponse>;
@@ -303,6 +304,7 @@ export function AppServerProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let disposed = false;
     let reconnectAttempt = 0;
+    let reconnectStartedAt: number | null = null;
     let reconnectTimer: number | null = null;
     let bootstrapping = false;
     const client = new AppServerBrowserClient();
@@ -552,6 +554,14 @@ export function AppServerProvider({ children }: { children: React.ReactNode }) {
       if (disposed || reconnectTimer !== null) {
         return;
       }
+      reconnectStartedAt ??= Date.now();
+      if (Date.now() - reconnectStartedAt >= RECONNECT_FAILURE_AFTER_MS) {
+        setState((current) => ({
+          ...current,
+          connection: { source: "web-bridge", data: "failed" },
+        }));
+        return;
+      }
       const delay = reconnectDelayMs(reconnectAttempt);
       reconnectAttempt += 1;
       reconnectTimer = window.setTimeout(() => {
@@ -569,6 +579,16 @@ export function AppServerProvider({ children }: { children: React.ReactNode }) {
       clientRef.current = null;
       client.close();
     };
+    const handleReconnect = () => {
+      if (disposed) return;
+      reconnectAttempt = 0;
+      reconnectStartedAt = Date.now();
+      if (reconnectTimer !== null) {
+        window.clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+      void bootstrap(true);
+    };
     const persistResumableTurns = () => {
       writeResumableTurns(
         window.sessionStorage,
@@ -579,6 +599,7 @@ export function AppServerProvider({ children }: { children: React.ReactNode }) {
       if (document.visibilityState === "hidden") persistResumableTurns();
     };
     window.addEventListener("codex-web:logout", handleWebLogout);
+    window.addEventListener("codex-web:reconnect", handleReconnect);
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("pagehide", persistResumableTurns);
 
@@ -611,6 +632,7 @@ export function AppServerProvider({ children }: { children: React.ReactNode }) {
         }
 
         reconnectAttempt = 0;
+        reconnectStartedAt = null;
         setState((current) => ({
           ...current,
           connection: { source: "web-bridge", data: "connected" },
@@ -654,6 +676,7 @@ export function AppServerProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       window.removeEventListener("codex-web:logout", handleWebLogout);
+      window.removeEventListener("codex-web:reconnect", handleReconnect);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("pagehide", persistResumableTurns);
       disposed = true;
@@ -666,6 +689,10 @@ export function AppServerProvider({ children }: { children: React.ReactNode }) {
       client.close();
     };
   }, [publicBridgeUrl]);
+
+  const reconnect = useCallback(() => {
+    window.dispatchEvent(new Event("codex-web:reconnect"));
+  }, []);
 
   const resetTurn = useCallback(() => {
     setState((current) => ({
@@ -1580,6 +1607,7 @@ export function AppServerProvider({ children }: { children: React.ReactNode }) {
 
   const actions = useMemo<AppServerActions>(
     () => ({
+      reconnect,
       startThread,
       sendOneTurn,
       resumeThread,
@@ -1642,7 +1670,7 @@ export function AppServerProvider({ children }: { children: React.ReactNode }) {
       publishCrossClientUserMessage,
       listOnlineUsers,
     }),
-    [startThread, sendOneTurn, resumeThread, forkThread, startSideChat, unsubscribeThread, sendTurnInThread, rollbackThread, interruptTurn, refreshThreads, listThreads, setThreadName, archiveThread, unarchiveThread, deleteThread, readThread, listThreadTurns, execCommand, spawnProcess, writeProcessStdin, resizeProcessPty, killProcess, subscribeProcess, readDirectory, createDirectory, readFile, readFileLimited, getFileSize, getFileMetadata, writeFile, removeFileTree, watchFileSystem, listSkills, setSkillEnabled, listHooks, refreshConfig, writeConfigEdits, writeMcpServers, reloadMcpServers, listMcpServerStatus, listInstalledPlugins, readPlugin, getThreadGoal, setThreadGoal, clearThreadGoal, respondToApproval, respondToServerRequest, resetTurn, updateThreadPermissions, updateThreadModelSettings, compactThread, startReview, fuzzyFileSearch, updateMemorySettings, readAccountRateLimits, refreshAccount, startAccountLogin, cancelAccountLogin, logoutAccount, publishCrossClientUserMessage, listOnlineUsers],
+    [reconnect, startThread, sendOneTurn, resumeThread, forkThread, startSideChat, unsubscribeThread, sendTurnInThread, rollbackThread, interruptTurn, refreshThreads, listThreads, setThreadName, archiveThread, unarchiveThread, deleteThread, readThread, listThreadTurns, execCommand, spawnProcess, writeProcessStdin, resizeProcessPty, killProcess, subscribeProcess, readDirectory, createDirectory, readFile, readFileLimited, getFileSize, getFileMetadata, writeFile, removeFileTree, watchFileSystem, listSkills, setSkillEnabled, listHooks, refreshConfig, writeConfigEdits, writeMcpServers, reloadMcpServers, listMcpServerStatus, listInstalledPlugins, readPlugin, getThreadGoal, setThreadGoal, clearThreadGoal, respondToApproval, respondToServerRequest, resetTurn, updateThreadPermissions, updateThreadModelSettings, compactThread, startReview, fuzzyFileSearch, updateMemorySettings, readAccountRateLimits, refreshAccount, startAccountLogin, cancelAccountLogin, logoutAccount, publishCrossClientUserMessage, listOnlineUsers],
   );
 
   return (

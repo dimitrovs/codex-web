@@ -8,7 +8,8 @@ describe("活动 writer 恢复收口", () => {
     expect(source).toContain("already has an active writer");
     expect(source).toContain("readThread(id, { includeTurns: true })");
     expect(source).toContain("setActiveWriterReplayOnly(true)");
-    expect(source).toContain("readOnly={activeWriterReplayOnly || (!isAppServerThread && sessionReadOnly)}");
+    expect(source).toContain("readOnly={activeWriterReplayOnly}");
+    expect(source).toContain("composerDisabled={connectionData !== 'connected' || sessionSyncing}");
     expect(source).not.toContain("实时状态将继续同步");
   });
 });
