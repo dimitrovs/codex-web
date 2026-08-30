@@ -461,11 +461,19 @@ export function splitThinkingContent(content: string, isStreaming = false): { su
   };
 }
 
+export function resolveThinkingExpanded(
+  hasDetails: boolean,
+  isStreaming: boolean,
+  userExpandedState: boolean | null,
+): boolean {
+  return hasDetails && (userExpandedState ?? isStreaming);
+}
+
 function ThinkingRow({ content, isStreaming }: { content: string; isStreaming?: boolean }) {
-  // Default open during streaming, collapsed in history
   const { summary, body } = splitThinkingContent(content, isStreaming);
   const hasDetails = body.length > 0;
-  const [expanded, setExpanded] = useState(!!isStreaming && hasDetails);
+  const [userExpandedState, setUserExpandedState] = useState<boolean | null>(null);
+  const expanded = resolveThinkingExpanded(hasDetails, !!isStreaming, userExpandedState);
   const [hovered, setHovered] = useState(false);
   const plugins = useStreamdownPlugins(body);
 
@@ -477,8 +485,7 @@ function ThinkingRow({ content, isStreaming }: { content: string; isStreaming?: 
         aria-expanded={hasDetails ? expanded : undefined}
         onClick={() => {
           if (!hasDetails) return;
-          const willExpand = !expanded;
-          setExpanded(willExpand);
+          setUserExpandedState((previous) => previous !== null ? !previous : !expanded);
         }}
         onMouseEnter={() => hasDetails && setHovered(true)}
         onMouseLeave={() => setHovered(false)}

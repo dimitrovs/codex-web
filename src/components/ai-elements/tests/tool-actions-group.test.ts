@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
+  resolveThinkingExpanded,
   splitThinkingContent,
   ToolActionsGroup,
   type ToolAction,
@@ -67,6 +68,16 @@ describe("工具过程折叠组", () => {
       summary: "检查构建配置",
       body: "接下来核对端口设置。",
     });
+  });
+
+  it("流式正文后续到达时自动展开，并保留用户手动选择", () => {
+    const titleOnly = splitThinkingContent("**检查构建配置**", true);
+    const withBody = splitThinkingContent("**检查构建配置**\n\n接下来核对端口设置。", true);
+
+    expect(resolveThinkingExpanded(titleOnly.body.length > 0, true, null)).toBe(false);
+    expect(resolveThinkingExpanded(withBody.body.length > 0, true, null)).toBe(true);
+    expect(resolveThinkingExpanded(withBody.body.length > 0, true, false)).toBe(false);
+    expect(resolveThinkingExpanded(withBody.body.length > 0, false, null)).toBe(false);
   });
 
   it("普通思考内容完整保留为正文", () => {
