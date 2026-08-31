@@ -16,6 +16,30 @@ import {
 } from "@/lib/file-excerpt-reference";
 
 describe("thread-history-adapter", () => {
+  it("恢复历史 imageView 为含媒体的 assistant 消息", () => {
+    const thread = createThread();
+    const baseTurn = thread.turns[0];
+    if (!baseTurn) throw new Error("测试 fixture 缺少 turn");
+    thread.turns = [{
+      ...baseTurn,
+      id: "turn-image",
+      items: [{ type: "imageView", id: "image-1", path: "/repo/web/output.png" }],
+    }];
+
+    const result = threadToMessages(thread);
+
+    expect(result.unsupportedItemCount).toBe(0);
+    expect(JSON.parse(result.messages[0]?.content ?? "[]")).toEqual([
+      expect.objectContaining({ type: "tool_use", id: "image-1", name: "view_image" }),
+      expect.objectContaining({
+        type: "tool_result",
+        tool_use_id: "image-1",
+        media: [{ type: "image", mimeType: "image/png", localPath: "/repo/web/output.png" }],
+      }),
+      expect.objectContaining({ type: "codex_summary", process_count: 1 }),
+    ]);
+  });
+
   it("保留历史 turn 中已完成的上下文压缩提示", () => {
     const thread = createThread();
     const baseTurn = thread.turns[0];

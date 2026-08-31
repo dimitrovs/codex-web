@@ -74,11 +74,12 @@ export function ProjectGroupHeader({
   const actionButtons = workingDirectory !== "" && (
     <div className={cn(
       "flex items-center gap-0.5 transition-opacity",
-      showActions ? "opacity-100" : "opacity-0 pointer-events-none"
+      showActions ? "opacity-100" : "opacity-100 md:opacity-0 md:pointer-events-none"
     )}>
       {/* New chat button — a "写新对话" pencil/compose icon (clearer than a
           bare +, which read ambiguously as "add what?"). */}
       <Button
+        type="button"
         variant="ghost"
         size="icon-xs"
         className="h-5 w-5 shrink-0 text-muted-foreground hover:text-foreground"

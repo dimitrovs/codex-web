@@ -330,6 +330,8 @@ function isSupportedAssistantItem(item: ThreadItem): boolean {
     item.type === "contextCompaction" ||
     item.type === "commandExecution" ||
     item.type === "webSearch" ||
+    item.type === "imageView" ||
+    item.type === "imageGeneration" ||
     item.type === "fileChange" ||
     item.type === "mcpToolCall" ||
     item.type === "dynamicToolCall" ||
@@ -345,6 +347,8 @@ function isUnsupportedHistoryItem(item: ThreadItem): boolean {
     item.type !== "reasoning" &&
     item.type !== "contextCompaction" &&
     item.type !== "webSearch" &&
+    item.type !== "imageView" &&
+    item.type !== "imageGeneration" &&
     item.type !== "commandExecution" &&
     item.type !== "fileChange" &&
     item.type !== "mcpToolCall" &&

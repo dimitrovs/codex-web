@@ -68,11 +68,25 @@ describe("app-server 输出媒体接线", () => {
     expect(lightbox).toContain("{current.alt}");
   });
 
-  it("新 app-server turn 发送前清空媒体缓存", () => {
+  it("完成态工具图片显示在默认折叠的处理区域之外", () => {
+    const item = readFileSync(
+      resolve(process.cwd(), "src/components/chat/MessageItem.tsx"),
+      "utf8",
+    );
+    const processStart = item.indexOf("{hasAssistantProcess && (");
+    const processEnd = item.indexOf("</ProcessCollapseGroup>", processStart);
+    const mediaRender = item.indexOf("{processMedia.length > 0 && <MediaPreview media={processMedia} />}");
+
+    expect(processStart).toBeGreaterThan(-1);
+    expect(processEnd).toBeGreaterThan(processStart);
+    expect(mediaRender).toBeGreaterThan(processEnd);
+  });
+
+  it("新 app-server turn 保留历史消息仍引用的媒体 URL", () => {
     const chatView = readFileSync(
       resolve(process.cwd(), "src/components/chat/ChatView.tsx"),
       "utf8",
     );
-    expect(chatView).toContain("clearAllCachedMediaObjectUrls();");
+    expect(chatView).not.toContain("clearAllCachedMediaObjectUrls");
   });
 });

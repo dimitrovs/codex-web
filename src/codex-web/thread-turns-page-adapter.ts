@@ -67,7 +67,7 @@ export function mergeThreadTurnMessages(
   incoming: Message[],
   placement: MergeThreadTurnMessagesPlacement,
 ): Message[] {
-  const seen = new Set<string>();
+  const seen = new Map<string, number>();
   const result: Message[] = [];
   const candidates = placement === "prepend" ? [...incoming, ...existing] : [...existing, ...incoming];
 
@@ -75,8 +75,12 @@ export function mergeThreadTurnMessages(
     const key = message.role === "assistant" && message.turn_id
       ? `${message.session_id}:${message.role}:${message.turn_id}`
       : message.id || `${message.session_id}:${message.role}:${message.created_at}:${message.content}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
+    const duplicateIndex = seen.get(key);
+    if (duplicateIndex !== undefined) {
+      if (placement === "append") result[duplicateIndex] = message;
+      continue;
+    }
+    seen.set(key, result.length);
     result.push(message);
   }
 

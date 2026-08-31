@@ -21,6 +21,7 @@ import { useSplit } from "@/hooks/useSplit";
 import { useTranslation } from "@/hooks/useTranslation";
 import type { TranslationKey } from "@/i18n";
 import { createNewChatHref } from "@/lib/new-chat-url";
+import { COMPACT_VIEWPORT_QUERY } from "@/hooks/useCompactViewport";
 import { cn } from "@/lib/utils";
 import { useAppServerActions, useAppServerSelector } from "@/codex-web/AppServerProvider";
 import { threadToChatSession } from "@/codex-web/thread-history-adapter";
@@ -287,6 +288,7 @@ export function ChatListPanel({ open }: ChatListPanelProps) {
     e.stopPropagation();
     localStorage.setItem('codepilot:last-working-directory', workingDirectory);
     window.dispatchEvent(new CustomEvent('project-directory-changed', { detail: { path: workingDirectory } }));
+    if (window.matchMedia(COMPACT_VIEWPORT_QUERY).matches) setChatListOpen(false);
     router.replace(createNewChatHref());
   };
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useState, useCallback, useRef, useEffect, useMemo, memo } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo, memo } from 'react';
 import { motion } from 'motion/react';
 import { cn } from '@/lib/utils';
 import type { Message, TokenUsage, FileAttachment, MediaBlock, MessageContentBlock } from '@/types';
@@ -478,6 +478,11 @@ export const MessageItem = memo(function MessageItem({ message, sessionId, canEd
     part.type === 'codex_context_compaction' ||
     (part.type === 'text' && part.variant === 'process')
   );
+  const processMedia = processParts.flatMap((part) =>
+    part.type === 'tools'
+      ? pairTools(part.tools).flatMap((tool) => tool.media || [])
+      : []
+  );
   const planParts = renderParts.filter((part) => part.type === 'proposed_plan');
   const interruptedParts = renderParts.filter((part) => part.type === 'codex_interrupted');
   const errorParts = renderParts.filter((part) => part.type === 'codex_error');
@@ -485,22 +490,19 @@ export const MessageItem = memo(function MessageItem({ message, sessionId, canEd
   const renderAssistantPart = (part: AssistantRenderPart, index: number) => {
     if (part.type === 'tools') {
       const segmentTools = pairTools(part.tools);
-      const segmentMedia = segmentTools.flatMap((tool) => tool.media || []);
       return (
-        <Fragment key={`assistant-tools-${index}`}>
-          <ToolActionsGroup
-            tools={segmentTools.map((tool, i) => ({
-              id: `hist-${index}-${i}`,
-              name: tool.name,
-              input: tool.input,
-              result: tool.result,
-              isError: tool.isError,
-              media: tool.media,
-            }))}
-            defaultExpanded={false}
-          />
-          {segmentMedia.length > 0 && <MediaPreview media={segmentMedia} />}
-        </Fragment>
+        <ToolActionsGroup
+          key={`assistant-tools-${index}`}
+          tools={segmentTools.map((tool, i) => ({
+            id: `hist-${index}-${i}`,
+            name: tool.name,
+            input: tool.input,
+            result: tool.result,
+            isError: tool.isError,
+            media: tool.media,
+          }))}
+          defaultExpanded={false}
+        />
       );
     }
     if (part.type === 'proposed_plan') {
@@ -637,6 +639,7 @@ export const MessageItem = memo(function MessageItem({ message, sessionId, canEd
                 {processParts.map((part, index) => renderAssistantPart(part, index))}
               </ProcessCollapseGroup>
             )}
+            {processMedia.length > 0 && <MediaPreview media={processMedia} />}
             {planParts.map((part, index) => renderAssistantPart(part, index))}
             {finalParts.length > 0 && (
               <div className="contents" data-assistant-final-answer data-answer-complete="true">

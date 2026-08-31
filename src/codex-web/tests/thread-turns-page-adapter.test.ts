@@ -97,20 +97,30 @@ describe("thread-turns-page-adapter", () => {
     expect(merged.map((message) => message.id)).toEqual(["user-1", "user-2", "user-3"]);
   });
 
-  it("append 合并时同一 turn 的 assistant 输出只保留一次", () => {
+  it("append 合并时用同一 turn 的最新富媒体 assistant 替换历史纯文本", () => {
     const thread = createThread();
     const historical = threadTurnsPageToMessages(thread, [
       createTurnWithAssistant("turn-1", "user-1", "agent-1", "final answer", 10),
     ]).find((message) => message.role === "assistant")!;
+    const richContent = JSON.stringify([
+      { type: "tool_use", id: "image-1", name: "view_image", input: { path: "/tmp/image.png" } },
+      {
+        type: "tool_result",
+        tool_use_id: "image-1",
+        content: "source: app-server.imageView",
+        media: [{ type: "image", mimeType: "image/png", localPath: "/tmp/image.png" }],
+      },
+      { type: "text", text: "final answer from notification" },
+    ]);
     const live = {
       ...historical,
       id: "temp-assistant-1",
-      content: "final answer from notification",
+      content: richContent,
     };
 
     const merged = mergeThreadTurnMessages([historical], [live], "append");
 
-    expect(merged).toEqual([historical]);
+    expect(merged).toEqual([live]);
   });
 
   it("历史请求较旧时保留已接受但尚未落入历史的用户消息", () => {
