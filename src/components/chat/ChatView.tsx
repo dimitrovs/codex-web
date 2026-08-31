@@ -153,12 +153,12 @@ interface ChatViewProps {
   continuedFromMessageId?: string;
   targetMessageId?: string;
   appServerSend?: (params: { content: string; files?: readonly FileAttachment[]; cwd: string; model?: string; effort?: ReasoningEffort; mode?: string; permissionProfile?: PermissionProfile; skills?: readonly SkillInputReference[]; onAccepted?: (threadId: string, turnId: string, files?: readonly FileAttachment[]) => void }) => Promise<AppServerTurnState>;
+  appServerEditLastTurn?: (params: { beforeTurnId: string; content: string; files?: readonly FileAttachment[]; cwd: string; model?: string; effort?: ReasoningEffort; mode?: string; permissionProfile?: PermissionProfile }) => Promise<void>;
   appServerSyncedUserMessages?: readonly CrossClientUserMessage[];
   onAppServerUserMessageAccepted?: (event: CrossClientUserMessage) => void;
   appServerClearContextAndSend?: (content: string, effort?: ReasoningEffort) => Promise<void>;
   appServerInterrupt?: () => Promise<void>;
   appServerLoadEarlier?: () => Promise<MessagesResponse>;
-  appServerRollbackLastTurn?: () => Promise<Message[]>;
   appServerRemoteRollback?: CrossClientThreadRollback | null;
   emptyState?: React.ReactNode;
   /** Hidden side chats stay mounted for state retention but must not consume global composer events. */
@@ -214,12 +214,12 @@ export function ChatView({
   continuedFromMessageId,
   targetMessageId,
   appServerSend,
+  appServerEditLastTurn,
   appServerSyncedUserMessages = [],
   onAppServerUserMessageAccepted,
   appServerClearContextAndSend,
   appServerInterrupt,
   appServerLoadEarlier,
-  appServerRollbackLastTurn,
   appServerRemoteRollback,
   emptyState,
   isActive = true,
@@ -1499,21 +1499,28 @@ export function ChatView({
 
   sendMessageRef.current = sendMessage;
 
-  const editableUserMessageId = useMemo(
-    () => appServerRollbackLastTurn
-      ? latestEditableUserMessageId(messages, isStreaming)
-      : null,
-    [appServerRollbackLastTurn, isStreaming, messages],
-  );
+  const editableUserMessage = useMemo(() => {
+    if (!appServerEditLastTurn) return null;
+    const messageId = latestEditableUserMessageId(messages, isStreaming);
+    return messages.find((message) => message.id === messageId && message.turn_id) ?? null;
+  }, [appServerEditLastTurn, isStreaming, messages]);
+  const editableUserMessageId = editableUserMessage?.id ?? null;
 
   const handleEditUserMessage = useCallback(async (content: string, files: FileAttachment[]) => {
-    if (!appServerRollbackLastTurn || isStreaming || appServerRequest) return false;
+    if (!appServerEditLastTurn || !editableUserMessage?.turn_id || isStreaming || appServerRequest) return false;
     setAppServerErrorBanner(null);
     try {
-      const rolledBackMessages = await appServerRollbackLastTurn();
-      cappedSetMessages(rolledBackMessages);
-      const delivered = await sendMessage(content, files);
-      return delivered !== false;
+      await appServerEditLastTurn({
+        beforeTurnId: editableUserMessage.turn_id,
+        content,
+        files,
+        cwd: workingDirectory,
+        model: currentModel,
+        effort: selectedEffort && selectedEffort !== 'auto' ? selectedEffort : undefined,
+        mode,
+        permissionProfile,
+      });
+      return true;
     } catch (error) {
       setAppServerErrorBanner({
         message: 'Codex 编辑发送失败',
@@ -1521,7 +1528,7 @@ export function ChatView({
       });
       return false;
     }
-  }, [appServerRequest, appServerRollbackLastTurn, cappedSetMessages, isStreaming, sendMessage]);
+  }, [appServerEditLastTurn, appServerRequest, currentModel, editableUserMessage, isStreaming, mode, permissionProfile, selectedEffort, workingDirectory]);
 
   // ── Dequeue: when streaming finishes and queue is non-empty, send next ──
   useEffect(() => {

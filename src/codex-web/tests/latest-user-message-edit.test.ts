@@ -43,6 +43,9 @@ describe("最近用户问题编辑判定", () => {
     expect(messageItem).toContain("message.edit.cancel");
     expect(messageItem).toContain("message.edit.send");
     expect(messageItem).toContain("data-user-message-editor");
+    expect(messageItem).toContain("<Textarea");
+    expect(messageItem.match(/<Button/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(messageItem).not.toContain("data-user-message-editor className=\"hidden");
   });
 
   it("跨客户端 rollback 丢弃最后一轮用户消息及其回答", () => {

@@ -205,7 +205,11 @@ export type ResumeThreadParams = {
   model?: string;
   permissionProfile?: PermissionProfile;
 };
-export type ForkThreadParams = { threadId: string; lastTurnId?: string | null };
+export type ForkThreadParams = {
+  threadId: string;
+  lastTurnId?: string | null;
+  beforeTurnId?: string | null;
+};
 
 export type SendTurnInThreadParams = {
   threadId: string;
@@ -1389,12 +1393,13 @@ export function AppServerProvider({ children }: { children: React.ReactNode }) {
     return response;
   }, []);
 
-  const forkThread = useCallback(async ({ threadId, lastTurnId }: ForkThreadParams) => {
+  const forkThread = useCallback(async ({ threadId, lastTurnId, beforeTurnId }: ForkThreadParams) => {
     const client = clientRef.current;
     if (!client) throw new Error("Web bridge 尚未连接");
     const response = (await client.request("thread/fork", {
       threadId,
       lastTurnId: lastTurnId ?? null,
+      beforeTurnId: beforeTurnId ?? null,
       threadSource: "codex_web",
     })) as ThreadForkResponse;
     void refreshThreads().catch(() => undefined);

@@ -51,7 +51,7 @@ import {
 import { latestInProgressTurnId } from '@/codex-web/resumed-turn-hydration';
 import { appServerConnectionNotice } from '@/codex-web/connection-notice';
 import { readDefaultPanelPreference } from '@/lib/app-preferences';
-import { threadRollbackToMessages } from '@/codex-web/thread-rollback';
+import { forkAndSendEditedMessage } from '@/codex-web/edit-message-fork';
 import {
   completeContinuationFork,
   continuationParentHref,
@@ -127,7 +127,6 @@ export default function ChatSessionPage({ params }: ChatSessionPageProps) {
     forkThread,
     sendOneTurn,
     sendTurnInThread,
-    rollbackThread,
     interruptTurn,
     respondToServerRequest,
     setThreadGoal,
@@ -729,26 +728,43 @@ export default function ChatSessionPage({ params }: ChatSessionPageProps) {
             turnId: appServerTurn.turnId,
           });
         } : undefined}
-        appServerRollbackLastTurn={canResumeAppServerThread ? async () => {
+        appServerEditLastTurn={canResumeAppServerThread ? async ({ beforeTurnId, content, files, cwd, model, effort, mode, permissionProfile }) => {
           const threadId = resumedThreadId || id;
-          const response = await rollbackThread({ threadId, numTurns: 1 });
-          const rolledBackMessages = applyTurnSnapshotsToMessages(
-            response.thread,
-            threadRollbackToMessages(response.thread),
-            turnSnapshotsRef.current,
-          );
-          setAppServerThread(response.thread);
-          setMessages(rolledBackMessages);
-          setLatestHistoryTurn(
-            latestHistoryTurnFromPage(
-              response.thread.turns,
-              'asc',
-              'app-server.thread/rollback',
-            ),
-          );
-          setHasMore(false);
-          setTurnsNextCursor(null);
-          return rolledBackMessages;
+          const sourceThread = appServerThread
+            ?? threads?.data.data.find((thread) => thread.id === threadId);
+          await forkAndSendEditedMessage({
+            fork: async () => {
+              const response = await forkThread({ threadId, beforeTurnId });
+              return { threadId: response.thread.id };
+            },
+            send: async (forkedThreadId) => {
+              await sendTurnInThread({
+                threadId: forkedThreadId,
+                content,
+                files,
+                cwd,
+                model,
+                effort,
+                mode,
+                permissionProfile,
+              });
+              writeThreadRuntimePreference(localStorage, forkedThreadId, {
+                ...(model ? { model } : {}),
+                ...(effort ? { effort } : {}),
+                permissionProfile,
+              });
+            },
+            navigate: async (forkedThreadId) => {
+              await completeContinuationFork({
+                rename: sourceThread ? async () => {
+                  const name = await nextForkedThreadNameFromList(sourceThread, listThreads);
+                  await setThreadName({ threadId: forkedThreadId, name });
+                } : undefined,
+                navigate: () => router.push(`/chat/${encodeURIComponent(forkedThreadId)}`),
+                onPostProcessError: (postProcessError) => console.warn('编辑任务后处理失败', postProcessError),
+              });
+            },
+          });
         } : undefined}
         appServerSend={canDisplayAppServerThread ? async ({ content, files, cwd, model, effort, mode, permissionProfile, onAccepted }) => {
           if (connectionData !== 'connected') throw new Error('Codex app-server 尚未连接');
