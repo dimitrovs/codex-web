@@ -117,6 +117,7 @@ export default function ChatSessionPage({ params }: ChatSessionPageProps) {
   const threadTokenUsageByThreadId = useAppServerSelector((state) => state.threadTokenUsageByThreadId);
   const latestCrossClientThreadRollback = useAppServerSelector((state) => state.latestCrossClientThreadRollback);
   const models = useAppServerSelector((state) => state.models);
+  const config = useAppServerSelector((state) => state.config);
   const threads = useAppServerSelector((state) => state.threads);
   const {
     readThread,
@@ -615,6 +616,8 @@ export default function ChatSessionPage({ params }: ChatSessionPageProps) {
       ? latestCrossClientThreadRollback
       : null;
   const defaultAppServerModel =
+    config?.data?.config?.model?.trim() ||
+    (config?.data?.config?.model_provider === 'deepseek' ? 'deepseek-flash' : '') ||
     models?.data.data.find((model) => !model.hidden && model.isDefault)?.id ||
     models?.data.data.find((model) => !model.hidden)?.id ||
     '';
