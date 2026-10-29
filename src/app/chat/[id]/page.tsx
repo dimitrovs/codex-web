@@ -140,7 +140,8 @@ export default function ChatSessionPage({ params }: ChatSessionPageProps) {
   const targetFilePath = searchParams.get('file') || undefined;
   const targetMessageId = searchParams.get('continuationMessage') || undefined;
   const compactViewport = useCompactViewport();
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
+  const isEnglish = locale === 'en';
   const defaultPanelAppliedRef = useRef(false);
   const routeIdRef = useRef<string | null>(null);
   const sessionLoadedRef = useRef(false);
@@ -261,8 +262,8 @@ export default function ChatSessionPage({ params }: ChatSessionPageProps) {
           setTurnsNextCursor(null);
           setActiveWriterReplayOnly(true);
           setPaginationNotice({
-            message: '此会话正在另一个 app-server 中运行',
-            description: '已加载完整历史；连接到原 app-server 后才能继续提交。',
+            message: isEnglish ? 'This conversation is running in another app-server' : '此会话正在另一个 app-server 中运行',
+            description: isEnglish ? 'Full history loaded; connect to the original app-server to continue submitting.' : '已加载完整历史；连接到原 app-server 后才能继续提交。',
           });
           return;
         }
@@ -567,7 +568,7 @@ export default function ChatSessionPage({ params }: ChatSessionPageProps) {
   const appServerTurn = activeTurnVisibility.visibleTurn;
   const appServerNotice = connectionNotice
     ?? (connectionData === 'connecting' && messages.length > 0
-      ? { message: '正在连接 Codex app-server...' }
+      ? { message: isEnglish ? 'Connecting to Codex app-server...' : '正在连接 Codex app-server...' }
       : null)
     ?? activeTurnVisibility.notice
     ?? paginationNotice;
@@ -617,8 +618,12 @@ export default function ChatSessionPage({ params }: ChatSessionPageProps) {
         initialHasSummary={sessionHasSummary}
         readOnly={activeWriterReplayOnly}
         readOnlyReason={activeWriterReplayOnly
-          ? "此会话由另一个 app-server 持有；当前仅显示历史，不能提交。"
-          : "这是只读历史会话，当前版本不能继续发送。"}
+          ? (isEnglish
+            ? "This conversation is held by another app-server; currently showing history only and cannot submit."
+            : "此会话由另一个 app-server 持有；当前仅显示历史，不能提交。")
+          : (isEnglish
+            ? "This is a read-only historical conversation; cannot send in the current version."
+            : "这是只读历史会话，当前版本不能继续发送。")}
         composerDisabled={connectionData !== 'connected' || sessionSyncing}
         messageApiBase={messageApiBase}
         workingDirectory={sessionWorkingDirectory}
