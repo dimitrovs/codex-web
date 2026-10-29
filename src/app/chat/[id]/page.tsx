@@ -24,6 +24,7 @@ import {
 import { approvalRequestMatchesThread, firstApproval } from '@/codex-web/approval-queue-adapter';
 import {
   historyPaginationFailureNotice,
+  isUnsupportedTurnsListError,
   preserveMessagesAfterPaginationFailure,
 } from '@/codex-web/history-pagination-state';
 import { resolveHistoryTurnTarget } from '@/codex-web/history-turn-routing';
@@ -204,23 +205,38 @@ export default function ChatSessionPage({ params }: ChatSessionPageProps) {
       parentThreadId: string,
       childMessages: Message[],
     ): Promise<string | undefined> {
-      let cursor: string | null = null;
-      do {
-        const parentPage = await listThreadTurns({
-          threadId: parentThreadId,
-          cursor,
-          limit: 100,
-          sortDirection: "desc",
-          itemsView: "full",
-        });
-        const messageId = continuationBoundaryMessageId(
-          childMessages,
-          parentPage.data.map((turn) => turn.id),
-        );
-        if (messageId) return messageId;
-        cursor = parentPage.nextCursor;
-      } while (cursor);
-      return undefined;
+      try {
+        let cursor: string | null = null;
+        do {
+          const parentPage = await listThreadTurns({
+            threadId: parentThreadId,
+            cursor,
+            limit: 100,
+            sortDirection: "desc",
+            itemsView: "full",
+          });
+          const messageId = continuationBoundaryMessageId(
+            childMessages,
+            parentPage.data.map((turn) => turn.id),
+          );
+          if (messageId) return messageId;
+          cursor = parentPage.nextCursor;
+        } while (cursor);
+        return undefined;
+      } catch (boundaryError) {
+        if (isUnsupportedTurnsListError(boundaryError)) {
+          try {
+            const parentResponse = await readThread(parentThreadId, { includeTurns: true });
+            return continuationBoundaryMessageId(
+              childMessages,
+              parentResponse.thread.turns.map((turn) => turn.id),
+            );
+          } catch {
+            return undefined;
+          }
+        }
+        throw boundaryError;
+      }
     }
 
     async function loadSessionAndMessages() {
@@ -329,13 +345,15 @@ export default function ChatSessionPage({ params }: ChatSessionPageProps) {
         } catch (pageError) {
           if (cancelled) return;
           let fallbackThread = response.thread;
+          let fallbackSucceeded = false;
           try {
             const fallbackResponse = await readThread(id, { includeTurns: true });
             if (cancelled) return;
             fallbackThread = fallbackResponse.thread;
             setAppServerThread(fallbackThread);
+            fallbackSucceeded = true;
           } catch {
-            // 保留 metadata-only thread；错误 banner 会说明分页失败。
+            // Keep metadata-only thread; error banner will indicate pagination failure.
           }
           const result = threadToMessages(fallbackThread, {
             omitAssistantTurnId: resumedLiveTurnId,
@@ -356,9 +374,15 @@ export default function ChatSessionPage({ params }: ChatSessionPageProps) {
           setMessages((current) => mergeLoadedThreadMessages(current, snapshotMessages));
           setHasMore(false);
           setTurnsNextCursor(null);
-          setPaginationNotice(historyPaginationFailureNotice(pageError));
+          if (fallbackSucceeded && isUnsupportedTurnsListError(pageError)) {
+            // thread/turns/list is not implemented yet in this app-server version;
+            // complete turns were loaded successfully via readThread with includeTurns.
+            setPaginationNotice(null);
+          } else {
+            setPaginationNotice(historyPaginationFailureNotice(pageError, isEnglish));
+          }
           if (result.unsupportedItemCount > 0) {
-            console.info(`Phase 5A 暂未渲染 ${result.unsupportedItemCount} 个历史工具 item`);
+            console.info(`Phase 5A: ${result.unsupportedItemCount} historical tool items were not rendered`);
           }
         }
         if (needsContinuationTargetHistory(
@@ -386,7 +410,7 @@ export default function ChatSessionPage({ params }: ChatSessionPageProps) {
               "app-server.thread/read",
             ));
           } catch (targetError) {
-            setPaginationNotice(historyPaginationFailureNotice(targetError));
+            setPaginationNotice(historyPaginationFailureNotice(targetError, isEnglish));
           }
         }
         if (response.thread.forkedFromId) {
@@ -403,7 +427,7 @@ export default function ChatSessionPage({ params }: ChatSessionPageProps) {
               );
               if (!cancelled) setContinuedFromMessageId(boundaryMessageId);
             } catch (boundaryError) {
-              console.info('无法定位接续任务边界', boundaryError);
+              console.info(isEnglish ? 'Unable to locate continuation task boundary' : '无法定位接续任务边界', boundaryError);
             }
           }
         }
@@ -861,7 +885,7 @@ export default function ChatSessionPage({ params }: ChatSessionPageProps) {
             setPaginationNotice(null);
             return { messages: mergedMessages, hasMore: !!turnsPage.nextCursor };
           } catch (pageError) {
-            const failure = preserveMessagesAfterPaginationFailure(messages, pageError);
+            const failure = preserveMessagesAfterPaginationFailure(messages, pageError, isEnglish);
             setHasMore(failure.hasMore);
             setTurnsNextCursor(failure.nextCursor);
             setPaginationNotice(failure.notice);
