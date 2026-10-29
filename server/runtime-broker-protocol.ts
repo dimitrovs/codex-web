@@ -13,6 +13,7 @@ export type BrokerPublicUser = Pick<
 
 export type BrokerRequest =
   | { type: "login"; email: string; password: string; remoteAddress?: string }
+  | { type: "ssoLogin"; email: string }
   | { type: "verifySession"; token: string }
   | { type: "turnstile/readPublic" }
   | { type: "turnstile/verify"; responseToken: string; remoteAddress?: string }

@@ -3,6 +3,11 @@ import { homedir } from "node:os";
 
 import { RuntimeBrokerClient } from "./runtime-broker-client";
 import type { BrokerPublicUser } from "./runtime-broker-protocol";
+import {
+  isEmailAllowedBySsoConfig,
+  readSsoConfigSync,
+  type SsoConfig,
+} from "./sso-config";
 
 export const WEB_AUTH_COOKIE = "codex_web_session";
 export const WEB_AUTH_MAX_AGE_SECONDS = 3 * 24 * 60 * 60;
@@ -21,14 +26,33 @@ type SessionPayload = {
   expiresAt: number;
 };
 
+export function readSessionSecret(env: NodeJS.ProcessEnv | Record<string, string | undefined>): string {
+  const sessionSecret = env.CODEX_WEB_SESSION_SECRET ?? "";
+  if (sessionSecret.length < 32) throw new Error("CODEX_WEB_SESSION_SECRET 必须至少 32 个字符");
+  return sessionSecret;
+}
+
 export function readWebAuthConfig(env: NodeJS.ProcessEnv | Record<string, string | undefined>): WebAuthConfig {
   const email = env.CODEX_WEB_LOGIN_EMAIL?.trim();
   const password = env.CODEX_WEB_LOGIN_PASSWORD ?? "";
-  const sessionSecret = env.CODEX_WEB_SESSION_SECRET ?? "";
   if (!email) throw new Error("CODEX_WEB_LOGIN_EMAIL 未设置");
   if (!password) throw new Error("CODEX_WEB_LOGIN_PASSWORD 未设置");
-  if (sessionSecret.length < 32) throw new Error("CODEX_WEB_SESSION_SECRET 必须至少 32 个字符");
+  const sessionSecret = readSessionSecret(env);
   return { email, password, sessionSecret };
+}
+
+export function assertWebAuthStartupConfig(
+  env: NodeJS.ProcessEnv | Record<string, string | undefined> = process.env,
+): void {
+  const sso = readSsoConfigSync(env);
+  if (sso.enabled) {
+    readSessionSecret(env);
+    if (!sso.issuer) throw new Error("SSO mode is enabled, but OIDC Issuer URL is not configured");
+    if (!sso.clientId) throw new Error("SSO mode is enabled, but OIDC Client ID is not configured");
+    if (!sso.clientSecret) throw new Error("SSO mode is enabled, but OIDC Client Secret is not configured");
+    return;
+  }
+  readWebAuthConfig(env);
 }
 
 export function verifyCredentials(email: string, password: string, config: WebAuthConfig): boolean {
@@ -44,6 +68,23 @@ export function createSessionToken(config: WebAuthConfig, now = Date.now()): str
   };
   const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
   return `${encoded}.${sign(encoded, config.sessionSecret)}`;
+}
+
+export function createSsoSessionToken(
+  email: string,
+  sso: SsoConfig,
+  sessionSecret: string,
+  now = Date.now(),
+): string {
+  const normalizedEmail = email.trim().toLowerCase();
+  const payload: SessionPayload = {
+    version: WEB_AUTH_SESSION_VERSION,
+    email: normalizedEmail,
+    credentialVersion: ssoCredentialVersion(sso, sessionSecret),
+    expiresAt: now + WEB_AUTH_MAX_AGE_SECONDS * 1_000,
+  };
+  const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  return `${encoded}.${sign(encoded, sessionSecret)}`;
 }
 
 export function verifySessionToken(
@@ -72,6 +113,34 @@ export function verifySessionToken(
   }
 }
 
+export function verifySsoSessionToken(
+  token: string | undefined,
+  sso: SsoConfig,
+  sessionSecret: string,
+  now = Date.now(),
+): SessionPayload | null {
+  if (!token || !sso.enabled) return null;
+  const separator = token.lastIndexOf(".");
+  if (separator <= 0) return null;
+  const encoded = token.slice(0, separator);
+  const signature = token.slice(separator + 1);
+  if (!constantTimeEqual(signature, sign(encoded, sessionSecret))) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")) as Partial<SessionPayload>;
+    if (
+      payload.version !== WEB_AUTH_SESSION_VERSION
+      || typeof payload.email !== "string"
+      || !isEmailAllowedBySsoConfig(payload.email, sso)
+      || payload.credentialVersion !== ssoCredentialVersion(sso, sessionSecret)
+      || typeof payload.expiresAt !== "number"
+      || payload.expiresAt <= now
+    ) return null;
+    return payload as SessionPayload;
+  } catch {
+    return null;
+  }
+}
+
 export function readSessionCookie(cookieHeader: string | null): string | undefined {
   if (!cookieHeader) return undefined;
   for (const part of cookieHeader.split(";")) {
@@ -83,8 +152,13 @@ export function readSessionCookie(cookieHeader: string | null): string | undefin
 
 export function isAuthenticatedRequest(request: Request, env = process.env): boolean {
   try {
+    const token = readSessionCookie(request.headers.get("cookie"));
+    const sso = readSsoConfigSync(env);
+    if (sso.enabled) {
+      return verifySsoSessionToken(token, sso, readSessionSecret(env)) !== null;
+    }
     const config = readWebAuthConfig(env);
-    return verifySessionToken(readSessionCookie(request.headers.get("cookie")), config) !== null;
+    return verifySessionToken(token, config) !== null;
   } catch {
     return false;
   }
@@ -116,14 +190,16 @@ export async function authenticateWebRequest(
     }
   }
   try {
-    const config = readWebAuthConfig(env);
-    const session = verifySessionToken(token, config);
+    const sso = readSsoConfigSync(env);
+    const session = sso.enabled
+      ? verifySsoSessionToken(token, sso, readSessionSecret(env))
+      : verifySessionToken(token, readWebAuthConfig(env));
     if (!session) return null;
     const home = env.CODEX_WEB_HOME_DIRECTORY?.trim() || homedir();
     return {
-      id: config.email,
-      email: config.email,
-      osUser: env.USER?.trim() || config.email,
+      id: session.email,
+      email: session.email,
+      osUser: env.USER?.trim() || session.email,
       home,
       codexHome: env.CODEX_HOME?.trim() || home,
       cwd: process.cwd(),
@@ -148,6 +224,13 @@ export function isSameOriginRequest(request: Request): boolean {
 function credentialVersion(config: WebAuthConfig): string {
   return createHmac("sha256", config.sessionSecret)
     .update(`${config.email}\0${config.password}`)
+    .digest("base64url")
+    .slice(0, 22);
+}
+
+function ssoCredentialVersion(sso: SsoConfig, sessionSecret: string): string {
+  return createHmac("sha256", sessionSecret)
+    .update(`sso\0${sso.issuer}\0${sso.clientId}\0${sso.clientSecret}`)
     .digest("base64url")
     .slice(0, 22);
 }

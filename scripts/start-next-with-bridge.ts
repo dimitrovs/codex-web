@@ -10,14 +10,14 @@ import {
 } from "../server/production-server-options";
 import { createBrokerWebSocketBridge } from "../server/broker-websocket-bridge";
 import { createWebSocketBridge } from "../server/websocket-bridge";
-import { readWebAuthConfig, runtimeBrokerSocket } from "../server/web-auth";
+import { assertWebAuthStartupConfig, runtimeBrokerSocket } from "../server/web-auth";
 
 const brokerSocket = runtimeBrokerSocket();
 if (!brokerSocket && !process.env.CODEX_HOME) {
   console.error("start 必须显式设置 CODEX_HOME；可在当前 shell 或 .bashrc 中 export CODEX_HOME。");
   process.exit(1);
 }
-if (!brokerSocket) readWebAuthConfig(process.env);
+if (!brokerSocket) assertWebAuthStartupConfig(process.env);
 
 const paths = resolveProductionServerPaths(
   import.meta.url,

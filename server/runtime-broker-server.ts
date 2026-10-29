@@ -252,6 +252,20 @@ async function handleOneShot(
     return { ok: true, type: "turnstileUpdated", config: publicTurnstileConfig(saved) };
   }
 
+  if (request.type === "ssoLogin") {
+    const normalizedEmail = request.email.trim().toLowerCase();
+    const user = config.users.find((candidate) => candidate.email === normalizedEmail);
+    if (!user?.enabled) {
+      return errorResponse("invalid_credentials", "该 SSO 邮箱未在 runtime broker 中授权");
+    }
+    return {
+      ok: true,
+      type: "login",
+      token: createBrokerSession(user, config),
+      user: publicBrokerUser(user),
+    };
+  }
+
   const key = request.email.trim().toLowerCase();
   if (!attempts.permit(key)) return errorResponse("rate_limited", "登录尝试过多，请稍后重试");
   const user = config.users.find((candidate) => candidate.email === request.email.trim().toLowerCase());
@@ -341,6 +355,12 @@ function parseRequest(value: unknown): BrokerRequest {
       password: request.password,
       ...(typeof request.remoteAddress === "string" ? { remoteAddress: request.remoteAddress } : {}),
     };
+  }
+  if (request.type === "ssoLogin") {
+    if (typeof request.email !== "string" || !request.email.trim()) {
+      throw new Error("broker SSO 登录请求格式无效");
+    }
+    return { type: "ssoLogin", email: request.email };
   }
   if (request.type === "verifySession" || request.type === "attachRuntime") {
     if (typeof request.token !== "string") throw new Error("broker Session 请求格式无效");

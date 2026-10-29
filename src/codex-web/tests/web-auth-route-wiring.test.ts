@@ -20,6 +20,8 @@ describe("Web 登录路由门禁", () => {
     expect(isPublicWebAuthPath("/login")).toBe(true);
     expect(isPublicWebAuthPath("/api/auth/config")).toBe(true);
     expect(isPublicWebAuthPath("/api/auth/login")).toBe(true);
+    expect(isPublicWebAuthPath("/api/auth/sso/login")).toBe(true);
+    expect(isPublicWebAuthPath("/api/auth/sso/callback")).toBe(true);
     expect(isPublicWebAuthPath("/api/auth/logout")).toBe(false);
     expect(isPublicWebAuthPath("/api/codex/bridge-url")).toBe(false);
     expect(proxyConfig.matcher[0]).not.toContain("png|jpg");

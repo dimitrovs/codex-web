@@ -46,7 +46,7 @@ Project Repository: [https://github.com/wangru8080/codex-web](https://github.com
 - Sign in to Codex in Settings via OpenAI account authorization or API Key.
 - View Codex account status and usage limit details provided by the app-server.
 - Support for English and Chinese, theme switching, and responsive layouts for desktop and mobile.
-- Dedicated Web login protection with optional Cloudflare Turnstile integration.
+- Dedicated Web login protection supporting either locally defined email/password credentials or standard OpenID Connect (OIDC) Single Sign-On (SSO), plus optional Cloudflare Turnstile integration.
 - Automatic browser reconnection after disconnection; if the app-server exits unexpectedly, the bridge attempts to restart it.
 
 ## Architecture
@@ -599,9 +599,17 @@ The following environment variables can also be used:
 
 | Environment Variable | Description | Required |
 |---|---|---|
-| `CODEX_WEB_LOGIN_EMAIL` | Web login email | Single-user mode |
-| `CODEX_WEB_LOGIN_PASSWORD` | Web login password | Single-user mode |
-| `CODEX_WEB_SESSION_SECRET` | Web session signing key (min 32 chars) | Single-user mode |
+| `CODEX_WEB_AUTH_MODE` | Authentication mode: `local` (email/password) or `sso` (OpenID Connect); overrides `sso.json` | No |
+| `CODEX_WEB_LOGIN_EMAIL` | Web login email (when using `local` auth mode) | Single-user `local` mode |
+| `CODEX_WEB_LOGIN_PASSWORD` | Web login password (when using `local` auth mode) | Single-user `local` mode |
+| `CODEX_WEB_SESSION_SECRET` | Web session signing key (min 32 chars) | Single-user mode (`local` and `sso`) |
+| `CODEX_WEB_OIDC_PROVIDER_NAME` | Display label for the OIDC provider on the login button (default `SSO`) | No |
+| `CODEX_WEB_OIDC_ISSUER` | OIDC Issuer URL (`.well-known/openid-configuration` base URL) | Single-user `sso` mode (if not in `sso.json`) |
+| `CODEX_WEB_OIDC_CLIENT_ID` | OIDC Client ID | Single-user `sso` mode (if not in `sso.json`) |
+| `CODEX_WEB_OIDC_CLIENT_SECRET` | OIDC Client Secret | Single-user `sso` mode (if not in `sso.json`) |
+| `CODEX_WEB_OIDC_SCOPES` | OIDC scopes (default `openid email profile`) | No |
+| `CODEX_WEB_OIDC_ALLOWED_EMAILS` | Optional comma-separated list of allowed user emails | No |
+| `CODEX_WEB_OIDC_ALLOWED_DOMAINS` | Optional comma-separated list of allowed email domains | No |
 | `CODEX_HOME` | Codex configuration directory for single-user app-server | No |
 | `CODEX_WEB_STATE` | State directory for Web service itself; defaults to current user's `~/.codex-web` | No |
 | `PORT` | HTTP port | No |
@@ -642,6 +650,32 @@ codex-web serve --host 0.0.0.0 --port 3001
 ```
 
 Never expose an unconfigured instance lacking HTTPS and access restrictions directly to the public Internet.
+
+### OpenID Connect (OIDC) Single Sign-On (SSO)
+
+Codex Web supports switching between locally defined credentials (`local`) and standard OpenID Connect Authorization Code Flow with PKCE (`sso`), compatible with any OIDC-compliant identity provider.
+
+You can configure OIDC SSO and switch authentication modes either in **Settings -> Security** or via `${CODEX_WEB_STATE}/sso.json` (defaulting to `~/.codex-web/sso.json` with `0600` file permissions) or `CODEX_WEB_OIDC_*` environment variables:
+
+```json
+{
+  "enabled": true,
+  "providerName": "SSO",
+  "issuer": "https://idp.example.com/oauth2/default",
+  "clientId": "<oidc-client-id>",
+  "clientSecret": "<oidc-client-secret>",
+  "scopes": "openid email profile",
+  "allowedEmails": ["admin@example.com"],
+  "allowedDomains": []
+}
+```
+
+- **Callback / Redirect URI**: Register `<origin>/api/auth/sso/callback` (e.g., `http://127.0.0.1:3001/api/auth/sso/callback` or `https://codex.example.com/api/auth/sso/callback`) in your OIDC provider.
+- **Exclusive Mode Switch**: When SSO is enabled (`"enabled": true` or `CODEX_WEB_AUTH_MODE=sso`), password login (`POST /api/auth/login`) is disabled and `CODEX_WEB_LOGIN_EMAIL` / `CODEX_WEB_LOGIN_PASSWORD` are not required at server startup (only `CODEX_WEB_SESSION_SECRET` is required).
+- **Allowlist & Multi-User Broker Support**:
+  - In single-user mode, you can optionally restrict access via `allowedEmails` and/or `allowedDomains`; if both are empty, any user permitted by your OIDC provider policy is accepted.
+  - In multi-user runtime broker mode, the verified OIDC `email` claim is matched against enabled users in `users.json`.
+- **Recovery**: If an OIDC misconfiguration prevents sign-in, set `"enabled": false` in `sso.json` (or launch with `CODEX_WEB_AUTH_MODE=local`) to switch back to local email/password login.
 
 ### Cloudflare Turnstile
 

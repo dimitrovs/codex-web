@@ -32,6 +32,15 @@ export class RuntimeBrokerClient {
     return { token: response.token, user: response.user };
   }
 
+  async ssoLogin(email: string): Promise<{
+    token: string;
+    user: BrokerPublicUser;
+  }> {
+    const response = await this.request({ type: "ssoLogin", email });
+    if (response.type !== "login") throw new Error("broker SSO 登录响应类型无效");
+    return { token: response.token, user: response.user };
+  }
+
   async verifySession(token: string): Promise<BrokerPublicUser> {
     const response = await this.request({ type: "verifySession", token });
     if (response.type !== "verifySession") throw new Error("broker Session 响应类型无效");
