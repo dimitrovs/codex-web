@@ -52,7 +52,7 @@ import { mergeCrossClientUserMessages } from '@/codex-web/cross-client-sync';
 import { appServerConnectionNotice } from '@/codex-web/connection-notice';
 
 const DEFAULT_CODEX_PROVIDER_ID = 'codex_account';
-const DEFAULT_CODEX_MODEL = 'gpt-5.5';
+const DEFAULT_CODEX_MODEL = 'deepseek-flash';
 const PENDING_NEW_CHAT_DRAFT_KEY = 'codepilot:pending-new-chat-draft';
 
 export default function NewChatPage() {

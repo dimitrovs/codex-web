@@ -88,6 +88,21 @@ export function appServerModelsToProviderGroup(
     };
   }
 
+  // If a non-OpenAI provider is explicitly configured, never expose incompatible OpenAI catalog models
+  if (configuredProvider && configuredProvider.toLowerCase() !== "openai") {
+    const customModels: ProviderModelGroup["models"] = configuredModel
+      ? [customModelToOption(configuredModel)]
+      : [];
+    if (customModels.length === 0) return null;
+    return {
+      provider_id: CODEX_ACCOUNT_PROVIDER_ID,
+      provider_name: `Codex (${configuredProvider})`,
+      provider_type: "codex",
+      compat: "codex_account",
+      models: customModels,
+    };
+  }
+
   const rawModels = response?.data.filter((model) => !model.hidden) ?? [];
   let modelOptions = rawModels.map(appServerModelToOption);
 

@@ -501,7 +501,6 @@ function ComposerReasoningModelSelector({
   const isEnglish = locale === 'en';
   const menuRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
-  const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const hasAvailableModel = modelOptions.length > 0;
   const effectiveEffort = selectedEffort === 'auto' ? 'high' : selectedEffort;
   const effortLabel = effortOptions.find((item) => item.value === effectiveEffort)?.label ?? effectiveEffort;
@@ -515,7 +514,6 @@ function ComposerReasoningModelSelector({
     const handler = (event: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
         setOpen(false);
-        setModelMenuOpen(false);
       }
     };
     document.addEventListener('mousedown', handler);
@@ -525,7 +523,6 @@ function ComposerReasoningModelSelector({
   const handleEffortSelect = useCallback((effort: string) => {
     onEffortChange(effort);
     setOpen(false);
-    setModelMenuOpen(false);
   }, [onEffortChange]);
 
   const handleModelSelect = useCallback((option: ComposerModelOption) => {
@@ -542,7 +539,6 @@ function ComposerReasoningModelSelector({
       }
     }
     setOpen(false);
-    setModelMenuOpen(false);
   }, [currentProviderIdValue, onModelChange, onProviderModelChange, persistLastModel]);
 
   const isModelActive = useCallback((option: ComposerModelOption) => (
@@ -555,7 +551,6 @@ function ComposerReasoningModelSelector({
         disabled={disabled || !hasAvailableModel}
         onClick={() => {
           setOpen((prev) => !prev);
-          setModelMenuOpen(false);
         }}
         className="gap-1.5 px-2"
       >
@@ -570,58 +565,53 @@ function ComposerReasoningModelSelector({
 
       {open && (
         <div className="absolute bottom-full right-0 z-50 mb-2 w-[260px] rounded-2xl border bg-popover p-1.5 shadow-[var(--shadow-diffuse)]">
-          <div className="px-2.5 pb-1.5 pt-1 text-xs font-semibold text-muted-foreground/65">{isEnglish ? 'Reasoning' : '推理'}</div>
-          <div className="space-y-0.5" data-source-breadcrumb="app-server.model/list">
-            {effortOptions.map((option) => (
+          <div className="px-2.5 pb-1.5 pt-1 text-xs font-semibold text-muted-foreground/65">
+            {isEnglish ? 'Model' : '模型'}
+          </div>
+          <div className="space-y-0.5">
+            {modelOptions.map((option) => (
               <button
                 key={option.value}
                 type="button"
                 className={cn(
-                  'flex h-9 w-full items-center rounded-lg px-2.5 text-left text-sm font-semibold text-foreground hover:bg-accent',
-                  effectiveEffort === option.value && 'bg-accent',
+                  'flex h-9 w-full items-center rounded-lg px-2.5 text-left text-sm font-normal text-foreground hover:bg-accent',
+                  isModelActive(option) && 'bg-accent font-semibold',
                 )}
-                onClick={() => handleEffortSelect(option.value)}
+                onClick={() => handleModelSelect(option)}
               >
                 <span>{option.label}</span>
-                {effectiveEffort === option.value && (
+                {isModelActive(option) && (
                   <Check size={18} className="ml-auto text-muted-foreground" />
                 )}
               </button>
             ))}
           </div>
-          <div className="my-1.5 h-px bg-border" />
-          <button
-            type="button"
-            className="flex h-9 w-full items-center rounded-lg bg-accent px-2.5 text-left text-sm font-normal text-foreground hover:bg-accent"
-            onMouseEnter={() => setModelMenuOpen(true)}
-            onClick={() => setModelMenuOpen(true)}
-          >
-            <span>{modelLabel}</span>
-            <CaretRight size={18} className="ml-auto text-muted-foreground" />
-          </button>
 
-          {modelMenuOpen && (
-            <div
-              className="absolute bottom-0 left-[calc(100%+8px)] z-50 w-[260px] rounded-2xl border bg-popover p-3 shadow-[var(--shadow-diffuse)]"
-              onMouseEnter={() => setModelMenuOpen(true)}
-            >
-              <div className="mb-2 text-xs font-semibold text-muted-foreground/65">{isEnglish ? 'Model' : '模型'}</div>
-              <div className="space-y-1">
-                {modelOptions.map((option) => (
+          {effortOptions.length > 0 && (
+            <>
+              <div className="my-1.5 h-px bg-border" />
+              <div className="px-2.5 pb-1.5 pt-1 text-xs font-semibold text-muted-foreground/65">
+                {isEnglish ? 'Reasoning' : '推理'}
+              </div>
+              <div className="space-y-0.5" data-source-breadcrumb="app-server.model/list">
+                {effortOptions.map((option) => (
                   <button
                     key={option.value}
                     type="button"
-                    className="flex h-9 w-full items-center rounded-lg px-2 text-left text-sm font-normal text-foreground hover:bg-accent"
-                    onClick={() => handleModelSelect(option)}
+                    className={cn(
+                      'flex h-9 w-full items-center rounded-lg px-2.5 text-left text-sm font-semibold text-foreground hover:bg-accent',
+                      effectiveEffort === option.value && 'bg-accent',
+                    )}
+                    onClick={() => handleEffortSelect(option.value)}
                   >
                     <span>{option.label}</span>
-                    {isModelActive(option) && (
+                    {effectiveEffort === option.value && (
                       <Check size={18} className="ml-auto text-muted-foreground" />
                     )}
                   </button>
                 ))}
               </div>
-            </div>
+            </>
           )}
         </div>
       )}
