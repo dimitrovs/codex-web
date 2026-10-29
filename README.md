@@ -696,7 +696,7 @@ sudo launchctl kickstart -k system/com.codex-web.web
 ```bash
 git clone https://github.com/wangru8080/codex-web.git
 cd codex-web
-npm install
+pnpm install
 
 export CODEX_HOME="${TMPDIR:-/tmp}/codex-web-dev-home"
 export CODEX_WEB_STATE="${TMPDIR:-/tmp}/codex-web-state"
@@ -704,7 +704,7 @@ export CODEX_WEB_LOGIN_EMAIL="dev@example.com"
 export CODEX_WEB_LOGIN_PASSWORD="<dev-unique-password>"
 export CODEX_WEB_SESSION_SECRET="<dev-fixed-secret-at-least-32-chars>"
 
-npm run dev
+pnpm run dev
 ```
 
 It is strongly recommended to use dedicated, isolated directories for `CODEX_HOME` and `CODEX_WEB_STATE` during development and testing to prevent reading or altering daily Codex accounts, configs, sessions, MCP, Skills, approvals, or Web settings.
@@ -712,18 +712,18 @@ It is strongly recommended to use dedicated, isolated directories for `CODEX_HOM
 Common verification commands:
 
 ```bash
-npm run test
-npm run build
-npm run test:smoke
+pnpm run test
+pnpm run build
+pnpm run test:smoke
 ```
 
-The repository also provides `npm run test:smoke:multi-user:macos` to verify isolation and recycling across Chrome, unprivileged users, and root app-servers on macOS. This command requires setting isolated directories, CLI paths, and test users via `CODEX_WEB_MACOS_SMOKE_*` environment variables as prompted by the script, and should never point to your daily `CODEX_HOME`.
+The repository also provides `pnpm run test:smoke:multi-user:macos` to verify isolation and recycling across Chrome, unprivileged users, and root app-servers on macOS. This command requires setting isolated directories, CLI paths, and test users via `CODEX_WEB_MACOS_SMOKE_*` environment variables as prompted by the script, and should never point to your daily `CODEX_HOME`.
 
 Build CLI:
 
 ```bash
-npm run build:cli
-npm pack --dry-run
+pnpm run build:cli
+pnpm pack --dry-run
 ```
 
 ## Current Limitations

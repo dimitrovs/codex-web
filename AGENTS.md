@@ -49,13 +49,13 @@ Common TUI references:
 
 **Thorough testing required before commit:**
 - Prior to every commit, thoroughly test all changed functionality in the development environment to verify there are no regressions.
-- Changes involving the front-end UI must be verified by launching the application (`npm run dev` or `npm run electron:dev`).
+- Changes involving the front-end UI must be verified by launching the application (`pnpm run dev` or `pnpm run electron:dev`).
 - Changes involving builds/packaging must undergo a complete build run to verify artifacts are usable.
 - Multi-platform changes must account for cross-platform differences.
 
 **UI changes must be verified, but do not force CDP by default:**
 - After modifying components, styles, or layouts, verify the effects in practice; prioritize the smallest, most stable verification approach to avoid tying up browser automation processes for extended periods.
-- Default progression: Code review / targeted test → `npm run test` → `npm run test:smoke` or Playwright E2E → playwright-mcp + CDP lightweight screenshot and console inspection.
+- Default progression: Code review / targeted test → `pnpm run test` → `pnpm run test:smoke` or Playwright E2E → playwright-mcp + CDP lightweight screenshot and console inspection.
 - playwright-mcp + CDP is suitable for short walkthroughs on local pages (e.g., rendering, clicking, input, screenshots, console on `localhost:3001`); verify only one clear goal per run, avoiding prolonged continuous operations, full-page DOM dumps, or heavy screenshot loops.
 - Use playwright-mcp + CDP only as a fallback for deep diagnostics: Network/Performance/Issues, precise CDP capabilities, or responsive device emulation; if signs of profile locks, stale processes, timeouts, or memory anomalies appear, stop immediately and switch to safer verification methods.
 - For interactive changes (buttons, forms, navigation), prioritize adding smoke/e2e tests; capture playwright-mcp + CDP screenshots only when human visual confirmation is needed.
@@ -117,11 +117,11 @@ Before adding features:
 
 Current repo state: `package.json` provides the following scripts. This section must remain synchronized with `package.json`:
 
-- `npm run dev`: Start the browser application.
-- `npm run build`: Verify production build.
-- `npm run test`: Run typecheck and unit tests.
-- `npm run test:smoke`: Run Playwright smoke tests under the dev server.
-- `npm run test:e2e`: Run full E2E when risks warrant.
+- `pnpm run dev`: Start the browser application.
+- `pnpm run build`: Verify production build.
+- `pnpm run test`: Run typecheck and unit tests.
+- `pnpm run test:smoke`: Run Playwright smoke tests under the dev server.
+- `pnpm run test:e2e`: Run full E2E when risks warrant.
 
 Run documentation self-checks for doc changes, such as `find docs -maxdepth 3 -type f | sort` and targeted `rg` scans. Never claim `Tests pass`, `Smoke passed`, or `Release ready` without actually executing the corresponding commands.
 
@@ -155,7 +155,7 @@ Scope of application:
 
 - Manual debugging of `codex app-server --stdio`.
 - Web bridge launching app-server.
-- `npm run test`, `npm run test:smoke`, Playwright, Vitest, and all tests that trigger the app-server.
+- `pnpm run test`, `pnpm run test:smoke`, Playwright, Vitest, and all tests that trigger the app-server.
 - Any command that reads accounts, configurations, session history, MCP, skills, approval records, or model settings.
 - After testing with a browser, close the test tabs and stop the service.
 
@@ -194,10 +194,10 @@ Recommended script when using the default isolated test environment:
 
 ```bash
 export CODEX_HOME=/volume2/SSD/codex/Temp/codex-dev-home
-npm run typecheck
-npm run test
-npm run build
-npm run test:smoke
+pnpm run typecheck
+pnpm run test
+pnpm run build
+pnpm run test:smoke
 ```
 
 Test tiers:

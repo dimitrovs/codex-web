@@ -28,9 +28,9 @@ process.env.CODEX_WEB_APP_ROOT = paths.applicationRoot;
 
 const buildIdPath = paths.buildIdPath;
 if (!existsSync(buildIdPath)) {
-  console.log("未找到可用的 Next.js 生产构建，正在执行 npm run build...");
-  const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
-  const build = spawnSync(npmCommand, ["run", "build"], {
+  console.log("未找到可用的 Next.js 生产构建，正在执行 pnpm run build...");
+  const pmCommand = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+  const build = spawnSync(pmCommand, ["run", "build"], {
     cwd: paths.applicationRoot,
     env: process.env,
     stdio: "inherit",
@@ -45,7 +45,7 @@ if (!existsSync(buildIdPath)) {
   }
 }
 
-const publicHost = process.env.CODEX_WEB_PUBLIC_HOST ?? "192.168.3.12";
+const publicHost = process.env.CODEX_WEB_PUBLIC_HOST ?? "127.0.0.1";
 const nextHost = process.env.CODEX_WEB_NEXT_HOST ?? "0.0.0.0";
 const requestedPort = readProductionPort(process.env.PORT);
 const bridgePath = "/codex-bridge";

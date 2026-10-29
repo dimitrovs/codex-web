@@ -35,18 +35,19 @@
     "scripts/start-production.mjs",
     "themes/"
   ],
+  "packageManager": "pnpm@11.1.3",
   "engines": {
     "node": ">=20.9.0"
   },
   "scripts": {
     "dev": "tsx scripts/dev-next-with-bridge.ts",
     "typecheck": "tsc --noEmit",
-    "test": "npm run typecheck && vitest run",
+    "test": "pnpm run typecheck && vitest run",
     "build": "next build",
     "postbuild": "tsx scripts/restore-next-env.ts",
-    "build:cli": "npm run build && npm run build:production-server && tsx scripts/build-cli.ts",
+    "build:cli": "pnpm run build && pnpm run build:production-server && tsx scripts/build-cli.ts",
     "build:production-server": "node scripts/build-production-server.mjs",
-    "prepack": "npm run build:cli",
+    "prepack": "pnpm run build:cli",
     "start": "node scripts/start-production.mjs",
     "build:server": "tsc -p tsconfig.build.json",
     "test:smoke": "tsx scripts/smoke.ts",

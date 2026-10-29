@@ -12,7 +12,7 @@ process.env.CODEX_HOME = codexHome;
 const brokerSocket = runtimeBrokerSocket();
 if (!brokerSocket) readWebAuthConfig(process.env);
 
-const publicHost = process.env.CODEX_WEB_PUBLIC_HOST ?? "192.168.3.12";
+const publicHost = process.env.CODEX_WEB_PUBLIC_HOST ?? "127.0.0.1";
 const devOrigins = [3000, 3001].flatMap((port) => [
   `http://localhost:${port}`,
   `http://127.0.0.1:${port}`,
