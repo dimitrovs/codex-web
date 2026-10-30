@@ -7,6 +7,8 @@ import { webSocketAppServerPeer, type AppServerPeer } from "./app-server-peer";
 import { isBridgeSyncNotification } from "./bridge-message-routing";
 import { PersistentAppServer } from "./persistent-app-server";
 import { validateBridgeRequest } from "./security";
+import { resolveScreenShareConfig, type ScreenShareConfigOptions } from "./screen-share/config";
+import { ScreenShareManager, type ScreenShareManagerOptions } from "./screen-share/manager";
 import type { JsonRpcMessage, JsonRpcResponse } from "../src/codex/protocol/json-rpc";
 
 export type ClientMessageInterceptor = (message: JsonRpcMessage) => JsonRpcResponse | null | undefined;
@@ -21,12 +23,14 @@ export type WebSocketBridgeOptions = CodexProcessOptions & {
   allowRemoteConnections?: boolean;
   allowSameOrigin?: boolean;
   clientMessageInterceptor?: ClientMessageInterceptor;
+  screenShare?: ScreenShareConfigOptions & Partial<ScreenShareManagerOptions>;
 };
 
 export type WebSocketBridge = {
   server: Server;
   token: string;
   appServerPid: number | undefined;
+  screenShareManager: ScreenShareManager;
   url: () => string;
   close: () => Promise<void>;
 };
@@ -39,13 +43,22 @@ export function createWebSocketBridge(options: WebSocketBridgeOptions = {}): Web
     response.end("not found");
   });
   const bridgePath = options.path ?? "/";
+  const screenShareConfig = resolveScreenShareConfig(options.screenShare);
+  const screenShareManager = new ScreenShareManager({
+    config: screenShareConfig,
+    ...options.screenShare,
+  });
+  const screenShareWsServer = new WebSocketServer({ noServer: true });
   const sockets = new Set<WebSocket>();
   const wsServer = new WebSocketServer({ noServer: true });
   const appServer = new PersistentAppServer(options);
 
   const handleUpgrade = (request: IncomingMessage, socket: import("node:stream").Duplex, head: Buffer) => {
     const pathname = new URL(request.url ?? "/", "http://localhost").pathname;
-    if (pathname !== bridgePath) return;
+    const isBridgeUpgrade = pathname === bridgePath;
+    const isScreenShareUpgrade = pathname === screenShareConfig.wsPath;
+    if (!isBridgeUpgrade && !isScreenShareUpgrade) return;
+
     const security = validateBridgeRequest(request, {
       token,
       allowedOrigins: options.allowedOrigins,
@@ -56,6 +69,13 @@ export function createWebSocketBridge(options: WebSocketBridgeOptions = {}): Web
     if (!security.ok) {
       socket.write(`HTTP/1.1 ${security.statusCode} ${security.message}\r\n\r\n`);
       socket.destroy();
+      return;
+    }
+
+    if (isScreenShareUpgrade) {
+      screenShareWsServer.handleUpgrade(request, socket, head, (webSocket) => {
+        void screenShareManager.handleConnection(webSocket, request);
+      });
       return;
     }
 
@@ -86,6 +106,7 @@ export function createWebSocketBridge(options: WebSocketBridgeOptions = {}): Web
     get appServerPid() {
       return appServer.pid;
     },
+    screenShareManager,
     url: () => {
       const address = server.address();
       if (typeof address !== "object" || address === null) {
@@ -95,6 +116,8 @@ export function createWebSocketBridge(options: WebSocketBridgeOptions = {}): Web
     },
     close: () => new Promise((resolve, reject) => {
       const finish = () => {
+        void screenShareManager.close();
+        screenShareWsServer.close();
         appServer.close();
         wsServer.removeAllListeners();
         if (!ownsServer || !server.listening) {

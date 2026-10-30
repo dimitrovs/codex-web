@@ -121,6 +121,7 @@ Current repo state: `package.json` provides the following scripts. This section 
 - `pnpm run build`: Verify production build.
 - `pnpm run test`: Run typecheck and unit tests.
 - `pnpm run test:smoke`: Run Playwright smoke tests under the dev server.
+- `pnpm run test:smoke:screen-share`: Run screen share negative & security smoke verification.
 - `pnpm run test:e2e`: Run full E2E when risks warrant.
 
 Run documentation self-checks for doc changes, such as `find docs -maxdepth 3 -type f | sort` and targeted `rg` scans. Never claim `Tests pass`, `Smoke passed`, or `Release ready` without actually executing the corresponding commands.

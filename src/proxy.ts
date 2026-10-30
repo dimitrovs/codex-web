@@ -20,7 +20,11 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  if (pathname === "/api/codex/bridge-url" || pathname.startsWith("/api/auth/")) {
+  if (
+    pathname === "/api/codex/bridge-url"
+    || pathname === "/api/codex/screen-share"
+    || pathname.startsWith("/api/auth/")
+  ) {
     return NextResponse.next();
   }
 
