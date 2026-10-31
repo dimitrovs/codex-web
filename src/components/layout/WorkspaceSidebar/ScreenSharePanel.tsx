@@ -11,17 +11,7 @@ import {
   isScreenShareFrameMessage,
   type ScreenShareFrameCommand,
 } from './screen-share-frame-protocol';
-
-export function buildScreenShareWsUrl(bridgeUrl: string, takeover = false): string {
-  const url = new URL(bridgeUrl);
-  url.pathname = '/screen-share/ws';
-  if (takeover) {
-    url.searchParams.set('takeover', '1');
-  } else {
-    url.searchParams.delete('takeover');
-  }
-  return url.toString();
-}
+import { buildScreenShareWsUrl } from './screen-share-url';
 
 export function ScreenSharePanel() {
   const frameRef = useRef<HTMLIFrameElement>(null);
@@ -99,12 +89,11 @@ export function ScreenSharePanel() {
 
   // Handle frame messages
   useEffect(() => {
-    const frame = frameRef.current;
-    if (!frame) return;
-
     const onMessage = (event: MessageEvent<unknown>) => {
+      const frame = frameRef.current;
       if (
-        event.origin !== window.location.origin
+        !frame
+        || event.origin !== window.location.origin
         || event.source !== frame.contentWindow
         || !isScreenShareFrameMessage(event.data)
       ) {

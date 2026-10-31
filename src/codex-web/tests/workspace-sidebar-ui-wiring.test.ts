@@ -92,4 +92,21 @@ describe('工作区侧栏 UI 接线', () => {
     const rootApp = source('src/components/layout/RootAppContent.tsx');
     expect(rootApp).toContain('pathname === "/workspace/screen"');
   });
+
+  it('屏幕共享消息监听在 iframe 挂载前注册，并在收到消息时解析 frame', () => {
+    const screenPanel = source('src/components/layout/WorkspaceSidebar/ScreenSharePanel.tsx');
+    const listener = screenPanel.indexOf('const onMessage = (event: MessageEvent<unknown>) => {');
+    const frameLookup = screenPanel.indexOf('const frame = frameRef.current;', listener);
+
+    expect(listener).toBeGreaterThan(-1);
+    expect(frameLookup).toBeGreaterThan(listener);
+    expect(screenPanel).not.toContain('const frame = frameRef.current;\n    if (!frame) return;');
+  });
+
+  it('屏幕共享独立窗口自行探测能力并连接 RFB', () => {
+    const frame = source('src/components/layout/WorkspaceSidebar/ScreenShareFrame.tsx');
+    expect(frame).toContain('window.parent !== window');
+    expect(frame).toContain("fetch('/api/codex/screen-share'");
+    expect(frame).toContain('buildScreenShareWsUrl(bridgeUrl, true)');
+  });
 });
