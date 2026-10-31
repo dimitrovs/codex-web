@@ -51,6 +51,41 @@ describe("screen-share rfb-proxy", () => {
     expect(forward).toEqual(Buffer.concat([pointerMsg, keyMsg]));
   });
 
+  it("drops noVNC extended clipboard messages without blocking later input", () => {
+    // noVNC advertises extended clipboard capabilities with a signed negative
+    // length (-8) and eight bytes of capability flags.
+    const extendedCutText = Buffer.from("06000000fffffff81f00000100000000", "hex");
+    const pointerMsg = Buffer.from([5, 1, 0, 120, 0, 90]);
+    const keyMsg = Buffer.from([4, 1, 0, 0, 0, 0, 0, 65]);
+
+    const { forward, remaining, droppedCutText } = filterClientMessages(
+      Buffer.concat([extendedCutText, pointerMsg, keyMsg]),
+    );
+
+    expect(remaining).toHaveLength(0);
+    expect(droppedCutText).toBe(true);
+    expect(forward).toEqual(Buffer.concat([pointerMsg, keyMsg]));
+  });
+
+  it("reassembles fragmented extended clipboard messages before parsing input", () => {
+    const extendedCutText = Buffer.from("06000000fffffff81f00000100000000", "hex");
+    const pointerMsg = Buffer.from([5, 1, 0, 120, 0, 90]);
+    const firstFragment = extendedCutText.subarray(0, 9);
+    const secondFragment = extendedCutText.subarray(9);
+
+    const first = filterClientMessages(firstFragment);
+    expect(first.forward).toHaveLength(0);
+    expect(first.remaining).toEqual(firstFragment);
+    expect(first.droppedCutText).toBe(false);
+
+    const second = filterClientMessages(
+      Buffer.concat([first.remaining, secondFragment, pointerMsg]),
+    );
+    expect(second.remaining).toHaveLength(0);
+    expect(second.droppedCutText).toBe(true);
+    expect(second.forward).toEqual(pointerMsg);
+  });
+
   it("buffers partial messages in remaining until more bytes arrive", () => {
     const cutTextMsg = Buffer.alloc(12);
     cutTextMsg[0] = 6;

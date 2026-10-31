@@ -80,8 +80,12 @@ export function filterClientMessages(buffer: Buffer): FilterClientMessagesResult
             droppedCutText,
           };
         }
-        const textLen = buffer.readUInt32BE(offset + 4);
-        msgLength = 8 + textLen;
+        // noVNC uses a negative signed length for extended clipboard messages.
+        // Treat the magnitude as the payload size so the following pointer and
+        // keyboard messages stay aligned instead of waiting for ~4 GiB of data.
+        const textLen = buffer.readInt32BE(offset + 4);
+        const textBytes = textLen < 0 ? -textLen : textLen;
+        msgLength = 8 + textBytes;
         break;
       }
       default:
