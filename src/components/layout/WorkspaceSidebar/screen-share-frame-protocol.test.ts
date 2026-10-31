@@ -6,13 +6,22 @@ describe('screen-share-frame-protocol', () => {
     expect(isScreenShareFrameMessage({ type: 'screen-frame/ready' })).toBe(true);
   });
 
-  it('validates status message with resolution', () => {
+  it('validates status message with resolution and code', () => {
     expect(
       isScreenShareFrameMessage({
         type: 'screen-frame/status',
         state: 'connected',
         width: 1920,
         height: 1080,
+      }),
+    ).toBe(true);
+
+    expect(
+      isScreenShareFrameMessage({
+        type: 'screen-frame/status',
+        state: 'disconnected',
+        code: 4003,
+        reason: 'Launch failed',
       }),
     ).toBe(true);
   });

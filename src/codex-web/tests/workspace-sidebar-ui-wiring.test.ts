@@ -87,4 +87,9 @@ describe('工作区侧栏 UI 接线', () => {
     expect(sidebarHook).toContain('await unsubscribeThread(current.threadId)');
     expect(sidebarHook).not.toContain('deleteThread');
   });
+
+  it('屏幕共享 iframe 路由脱离 AppShell，避免嵌套侧栏', () => {
+    const rootApp = source('src/components/layout/RootAppContent.tsx');
+    expect(rootApp).toContain('pathname === "/workspace/screen"');
+  });
 });

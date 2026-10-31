@@ -43,6 +43,18 @@ export function ScreenShareFrame() {
         rfb.viewOnly = false;
         rfb.clipViewport = false;
 
+        let lastCloseCode: number | undefined;
+        let lastCloseReason: string | undefined;
+
+        if (typeof (rfb as any)._socketClose === 'function') {
+          const originalSocketClose = (rfb as any)._socketClose.bind(rfb);
+          (rfb as any)._socketClose = (e: any) => {
+            lastCloseCode = e?.code;
+            lastCloseReason = e?.reason;
+            originalSocketClose(e);
+          };
+        }
+
         rfb.addEventListener('connect', () => {
           post({
             type: 'screen-frame/status',
@@ -53,17 +65,28 @@ export function ScreenShareFrame() {
         });
 
         rfb.addEventListener('disconnect', (e: any) => {
+          let reason = lastCloseReason;
+          if (!reason) {
+            if (lastCloseCode === 4001) reason = 'taken-over';
+            else if (lastCloseCode === 4002) reason = 'already-active';
+            else if (lastCloseCode === 4003) reason = 'VNC server launch failed';
+            else if (lastCloseCode === 1006) reason = 'Connection closed unexpectedly (server unreachable or rejected)';
+            else if (lastCloseCode) reason = `Disconnected (code: ${lastCloseCode})`;
+            else if (e.detail?.clean) reason = 'Clean disconnect';
+            else reason = 'Connection closed';
+          }
           post({
             type: 'screen-frame/status',
             state: 'disconnected',
-            reason: e.detail?.reason || (e.detail?.clean ? 'clean' : 'connection closed'),
+            code: lastCloseCode,
+            reason,
           });
         });
 
         rfb.addEventListener('securityfailure', (e: any) => {
           post({
             type: 'screen-frame/error',
-            message: e.detail?.reason || 'Security failure',
+            message: e.detail?.reason || e.detail?.status || 'Security handshake failure',
           });
         });
 

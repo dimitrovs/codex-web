@@ -33,38 +33,38 @@ export function ScreenSharePanel() {
   const [resolution, setResolution] = useState<{ width: number; height: number } | null>(null);
   const [disconnectReason, setDisconnectReason] = useState<string | null>(null);
   const wsUrlRef = useRef<string | null>(null);
+  const frameReadyRef = useRef(false);
 
   const send = useCallback((command: ScreenShareFrameCommand) => {
     frameRef.current?.contentWindow?.postMessage(command, window.location.origin);
   }, []);
 
+  const startConnection = useCallback((wsUrl: string) => {
+    setConnectionState('connecting');
+    setError(null);
+    setDisconnectReason(null);
+    send({ type: 'screen-frame/connect', wsUrl });
+  }, [send]);
+
+  const loadCapability = useCallback(async () => {
+    try {
+      const res = await fetch('/api/codex/screen-share', { cache: 'no-store' });
+      if (!res.ok) {
+        throw new Error(`Capability check failed with status ${res.status}`);
+      }
+      const data = (await res.json()) as { capability: ScreenShareCapability };
+      setCapability(data.capability);
+      setCapabilityLoading(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setCapabilityLoading(false);
+    }
+  }, []);
+
   // Fetch capability
   useEffect(() => {
-    let cancelled = false;
-    async function loadCapability() {
-      try {
-        const res = await fetch('/api/codex/screen-share', { cache: 'no-store' });
-        if (!res.ok) {
-          throw new Error(`Capability check failed with status ${res.status}`);
-        }
-        const data = (await res.json()) as { capability: ScreenShareCapability };
-        if (!cancelled) {
-          setCapability(data.capability);
-          setCapabilityLoading(false);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : String(err));
-          setCapabilityLoading(false);
-        }
-      }
-    }
-
     void loadCapability();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  }, [loadCapability]);
 
   // Setup WS URL once available
   useEffect(() => {
@@ -75,11 +75,18 @@ export function ScreenSharePanel() {
       try {
         const bridgeUrl = await resolveCodexBridgeUrl('');
         if (!cancelled) {
-          wsUrlRef.current = buildScreenShareWsUrl(bridgeUrl);
+          const wsUrl = buildScreenShareWsUrl(bridgeUrl);
+          wsUrlRef.current = wsUrl;
+          if (frameReadyRef.current) {
+            startConnection(wsUrl);
+          }
         }
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : String(err));
+          const msg = err instanceof Error ? err.message : String(err);
+          setError(msg);
+          setDisconnectReason(msg);
+          setConnectionState('disconnected');
         }
       }
     }
@@ -88,7 +95,7 @@ export function ScreenSharePanel() {
     return () => {
       cancelled = true;
     };
-  }, [capability]);
+  }, [capability, startConnection]);
 
   // Handle frame messages
   useEffect(() => {
@@ -106,8 +113,9 @@ export function ScreenSharePanel() {
 
       const msg = event.data;
       if (msg.type === 'screen-frame/ready') {
+        frameReadyRef.current = true;
         if (wsUrlRef.current) {
-          send({ type: 'screen-frame/connect', wsUrl: wsUrlRef.current });
+          startConnection(wsUrlRef.current);
         }
       } else if (msg.type === 'screen-frame/status') {
         setConnectionState(msg.state);
@@ -118,9 +126,12 @@ export function ScreenSharePanel() {
           setDisconnectReason(msg.reason ?? null);
         } else {
           setDisconnectReason(null);
+          setError(null);
         }
       } else if (msg.type === 'screen-frame/error') {
         setError(msg.message);
+        setDisconnectReason(msg.message);
+        setConnectionState('disconnected');
       }
     };
 
@@ -129,22 +140,29 @@ export function ScreenSharePanel() {
       window.removeEventListener('message', onMessage);
       send({ type: 'screen-frame/disconnect' });
     };
-  }, [send]);
+  }, [send, startConnection]);
 
   const handleTakeover = useCallback(() => {
     if (!wsUrlRef.current) return;
     setError(null);
     setDisconnectReason(null);
+    setConnectionState('connecting');
     const takeoverUrl = buildScreenShareWsUrl(wsUrlRef.current, true);
     send({ type: 'screen-frame/takeover', wsUrl: takeoverUrl });
   }, [send]);
 
   const handleReconnect = useCallback(() => {
-    if (!wsUrlRef.current) return;
+    if (!wsUrlRef.current) {
+      setError(null);
+      setCapabilityLoading(true);
+      void loadCapability();
+      return;
+    }
     setError(null);
     setDisconnectReason(null);
+    setConnectionState('connecting');
     send({ type: 'screen-frame/connect', wsUrl: wsUrlRef.current });
-  }, [send]);
+  }, [send, loadCapability]);
 
   const handlePopOut = useCallback(() => {
     window.open('/workspace/screen', '_blank', 'width=1280,height=800,menubar=no,toolbar=no');
@@ -154,6 +172,25 @@ export function ScreenSharePanel() {
     return (
       <div className="flex h-full w-full items-center justify-center bg-white p-4 text-xs text-neutral-500">
         {t('workspaceSidebar.screenShare.connecting' as TranslationKey)}
+      </div>
+    );
+  }
+
+  if (error && !capability) {
+    return (
+      <div className="flex h-full w-full flex-col items-center justify-center bg-white p-6 text-center text-sm text-neutral-600">
+        <p className="font-mono text-xs text-red-600 break-words max-w-sm">{error}</p>
+        <button
+          type="button"
+          onClick={() => {
+            setError(null);
+            setCapabilityLoading(true);
+            void loadCapability();
+          }}
+          className="mt-3 rounded bg-neutral-200 px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-300"
+        >
+          {t('workspaceSidebar.screenShare.retry' as TranslationKey)}
+        </button>
       </div>
     );
   }
@@ -172,7 +209,10 @@ export function ScreenSharePanel() {
         className="flex h-full w-full flex-col items-center justify-center bg-white p-6 text-center text-sm text-neutral-600"
         data-source-breadcrumb="bridge.screen-share/probe"
       >
-        <p className="font-mono text-xs text-red-600">{capability.reason}</p>
+        <p className="text-sm font-medium text-neutral-800 mb-2">
+          {t('workspaceSidebar.screenShare.unsupported' as TranslationKey)}
+        </p>
+        <p className="font-mono text-xs text-red-600 break-words max-w-sm">{capability.reason}</p>
       </div>
     );
   }
@@ -190,9 +230,9 @@ export function ScreenSharePanel() {
         className="flex h-7 shrink-0 items-center justify-between border-b border-neutral-800 bg-neutral-950 px-3 text-[11px] text-neutral-400"
         data-source-breadcrumb="bridge.screen-share/rfb-serverinit"
       >
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 min-w-0">
           <span
-            className={`inline-block h-2 w-2 rounded-full ${
+            className={`inline-block h-2 w-2 shrink-0 rounded-full ${
               connectionState === 'connected'
                 ? 'bg-emerald-500'
                 : connectionState === 'connecting'
@@ -200,14 +240,16 @@ export function ScreenSharePanel() {
                   : 'bg-neutral-600'
             }`}
           />
-          <span>
+          <span className="truncate max-w-[260px]" title={disconnectReason || undefined}>
             {connectionState === 'connected'
               ? resolution
                 ? `${resolution.width} × ${resolution.height}`
                 : t('workspaceSidebar.screenShare.connected' as TranslationKey)
               : connectionState === 'connecting'
                 ? t('workspaceSidebar.screenShare.connecting' as TranslationKey)
-                : t('workspaceSidebar.screenShare.disconnected' as TranslationKey)}
+                : disconnectReason
+                  ? `${t('workspaceSidebar.screenShare.disconnected' as TranslationKey)}: ${disconnectReason}`
+                  : t('workspaceSidebar.screenShare.disconnected' as TranslationKey)}
           </span>
         </div>
 
@@ -215,7 +257,7 @@ export function ScreenSharePanel() {
           type="button"
           onClick={handlePopOut}
           title={t('workspaceSidebar.screenShare.popOut' as TranslationKey)}
-          className="flex items-center gap-1 text-neutral-400 hover:text-white"
+          className="flex shrink-0 items-center gap-1 text-neutral-400 hover:text-white"
         >
           <ArrowSquareOut size={13} />
           <span>{t('workspaceSidebar.screenShare.popOut' as TranslationKey)}</span>
@@ -232,13 +274,18 @@ export function ScreenSharePanel() {
         />
 
         {/* Overlay notices */}
-        {(error || isAlreadyActive || isTakenOver) && (
+        {(connectionState === 'disconnected' || error || isAlreadyActive || isTakenOver) && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-neutral-950/90 p-6 text-center text-white">
-            {isAlreadyActive && (
+            {isAlreadyActive ? (
               <div className="max-w-xs space-y-3">
-                <p className="text-sm">
+                <p className="text-sm font-medium">
                   {t('workspaceSidebar.screenShare.alreadyActive' as TranslationKey)}
                 </p>
+                {disconnectReason && (
+                  <p className="font-mono text-xs text-neutral-400 break-words">
+                    {disconnectReason}
+                  </p>
+                )}
                 <button
                   type="button"
                   onClick={handleTakeover}
@@ -247,13 +294,16 @@ export function ScreenSharePanel() {
                   {t('workspaceSidebar.screenShare.takeover' as TranslationKey)}
                 </button>
               </div>
-            )}
-
-            {isTakenOver && (
+            ) : isTakenOver ? (
               <div className="max-w-xs space-y-3">
-                <p className="text-sm">
+                <p className="text-sm font-medium">
                   {t('workspaceSidebar.screenShare.takenOver' as TranslationKey)}
                 </p>
+                {disconnectReason && (
+                  <p className="font-mono text-xs text-neutral-400 break-words">
+                    {disconnectReason}
+                  </p>
+                )}
                 <button
                   type="button"
                   onClick={handleReconnect}
@@ -262,10 +312,26 @@ export function ScreenSharePanel() {
                   {t('workspaceSidebar.screenShare.reconnect' as TranslationKey)}
                 </button>
               </div>
-            )}
-
-            {error && !isAlreadyActive && !isTakenOver && (
-              <p className="font-mono text-xs text-red-400">{error}</p>
+            ) : (
+              <div className="max-w-sm space-y-3">
+                <p className="text-sm font-medium text-neutral-200">
+                  {t('workspaceSidebar.screenShare.disconnected' as TranslationKey)}
+                </p>
+                {(error || disconnectReason) && (
+                  <div className="rounded border border-red-900/60 bg-red-950/30 p-2 text-left">
+                    <p className="font-mono text-xs text-red-400 break-words">
+                      {error || disconnectReason}
+                    </p>
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={handleReconnect}
+                  className="rounded bg-neutral-800 border border-neutral-700 px-4 py-1.5 text-xs font-medium text-white hover:bg-neutral-700"
+                >
+                  {t('workspaceSidebar.screenShare.reconnect' as TranslationKey)}
+                </button>
+              </div>
             )}
           </div>
         )}

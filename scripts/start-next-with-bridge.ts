@@ -94,7 +94,7 @@ process.env.CODEX_WEB_BRIDGE_URL = brokerSocket ? bridgePath : `${bridgePath}?to
 
 server.on("upgrade", (request, socket, head) => {
   const pathname = new URL(request.url ?? "/", "http://localhost").pathname;
-  if (pathname === bridgePath) return;
+  if (pathname === bridgePath || pathname === "/screen-share/ws") return;
   void nextUpgradeHandler(request, socket, head).catch((error) => {
     console.error("Next WebSocket upgrade 处理失败：", error);
     socket.destroy();
